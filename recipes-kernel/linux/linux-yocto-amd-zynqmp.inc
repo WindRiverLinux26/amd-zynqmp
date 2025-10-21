@@ -5,7 +5,7 @@
 
 COMPATIBLE_MACHINE:amd-zynqmp = "amd-zynqmp"
 
-TARGET_SUPPORTED_KTYPES:amd-zynqmp = "standard"
+TARGET_SUPPORTED_KTYPES:amd-zynqmp = "standard preempt-rt"
 
 KERNEL_VERSION_SANITY_SKIP = "1"
 SRCREV_machine:amd-zynqmp ?= "${AUTOREV}"
