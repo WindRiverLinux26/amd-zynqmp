@@ -14,7 +14,9 @@ This layer depends on the following layers supplied with Wind River Linux:
 	meta-xilinx/meta-xilinx-bsp
 	meta-xilinx/meta-xilinx-core
 	meta-xilinx/meta-xilinx-standalone
-	meta-xilinx-tools
+	meta-xilinx/meta-xilinx-standalone-sdt
+	meta-xilinx/meta-microblaze
+	meta-amd-adaptive-socs/meta-amd-adaptive-socs-bsp
 	meta-arm/meta-arm
 
 Maintenance
@@ -188,15 +190,18 @@ CUSTOMER_RECIPES:xilinx += 'fsbl'
 CUSTOMER_RECIPES:xilinx += 'arm-trusted-firmware'
 CUSTOMER_RECIPES:xilinx += 'pmufw'
 CUSTOMER_RECIPES:xilinx += 'device-tree'
-CUSTOMER_RECIPES:xilinx-tools += 'bitstream-extraction'
-CUSTOMER_RECIPES:xilinx-tools += 'external-hdf'
-CUSTOMER_RECIPES:xilinx-tools += 'xsct'
 CUSTOMER_RECIPES:xilinx-standalone += 'pmu-firmware'
 CUSTOMER_RECIPES:xilinx-standalone += 'fsbl-firmware'
 CUSTOMER_RECIPES:xilinx += 'u-boot-xlnx-uenv'
 CUSTOMER_RECIPES:xilinx += 'trusted-firmware-a'
 CUSTOMER_RECIPES:xilinx-standalone += 'embeddedsw-source'
-WRL_ZYNQMP_BOOTBIN_TARGET = 'zcu102'
+DISTRO_FEATURES:append = " xilinx-bootloader"
+CUSTOMER_RECIPES:meta-python += 'python3-humanfriendly'
+CUSTOMER_RECIPES:virtualization-layer += 'lopper'
+CUSTOMER_RECIPES:xilinx += 'python3-anytree'
+CUSTOMER_RECIPES:xilinx += 'u-boot-tools-xlnx'
+CUSTOMER_RECIPES:xilinx += 'binutils'
+CUSTOMER_RECIPES:xilinx-standalone-sdt += 'sdt-artifacts aiefal aienginev2 audio-formatter avbuf axicdma axicdma-example axidma axidma-example axiethernet axiethernet-example axipcie axipmon axipmon-example axis-switch axivdma axivdma-example bram bram-example can can-example canfd canfd-example canps canps-example cframe cfupmc clk-wiz clk-wiz-example clockps clockps-example common coresightps-dcc csi csi2tx csi2txss csudma csudma-example dcsub ddrcpsu devcfg devcfg-example dfeccf dfeccf-example dfeequ dfeequ-example dfemix dfemix-example dfeofdm dfeofdm-example dfeprach dfeprach-example dfxasm dfxasm-example dmaps dmaps-example dp12 dp12rxss dp12txss dp14 dp14rxss dp14txss dp21 dp21rxss dp21txss dpdma dphy dppsu dsi dsi2rx dsirxss dsitxss dual-splitter emaclite emaclite-example emacps emacps-example emc gpio gpio-example gpiops gpiops-example hdcp1x hdcp22-cipher hdcp22-cipher-dp hdcp22-common hdcp22-mmult hdcp22-rng hdcp22-rx hdcp22-rx-dp hdcp22-tx hdcp22-tx-dp hwicap i2srx i2stx i3c i3cpsx i3cpsx-example iic iic-example iicps iicps-example intc intc-example iomodule ipipsu ipipsu-example llfifo llfifo-example mbox mboxpsu-exampmcdma mcdma-example mipicsiss mipi-rx-phy mipi-tx-phy mmidp mutex mutex-example nandps nandpsu nandpsu-example ospipsv ospipsv-example pciepsu pciepsu-example prc prd qspips qspips-example qspipsu qspipsu-example resetps resetps-example rfdc rfdc-example rtcpsu rtcpsu-example scugic scugic-example scutimer scuwdt sd-fec sdiaud sdi-common sdps sdps-example spdif spi spips spips-example sysmon sysmon-example sysmonpsu sysmonpsu-example sysmonpsv sysmonpsv-example tft tmrctr tmrctr-example tmr-inject tmr-manager trafgen trafgen-example trngpsv trngpsx ttcps ttcps-example uartlite uartlite-example uartns550 uartns550-example uartps uartps-example uartpsv uartpsv-example ufspsxc usb usb-example usbps usbpsu usbpsu-example v-axi4s-remap v-csc v-deinterlacer v-demosaic v-demosaict v-gamma-lfrmbuf-rd v-frmbuf-rd-example v-frmbuf-wr v-frmbuf-wr-example v-gamma-lut v-gamma-lut-example v-hcresampler v-hdmi-common v-hdmiphy1 v-hdmirx1 v-hdmirx v-hdmirxss1 v-hdmirxss v-hdmitx1 v-hdmitx v-hdmitxss1 v-hdmitxss v-hscaler video-common visp-ss v-letterbox v-mix v-mix-example v-multi-scaler v-multi-scaler-example vphy vprocss vprocss-example v-scenechange v-scenechange-example v-sdirx v-sdirxss v-sditx v-sditxss vtc v-tpg v-vcresampler v-vscaler v-warp-filter v-warp-init wdtps wdtps-example wdttb wdttb-example xadcps xadcps-example xdmapcie xdmapcie-example xxvethernet xxvethernet-example zdma zdma-example libxil lwip xilasu xilcert xilffs xilffs-example xilfpga xilfpga-example xilloader xilmailbox xilmailbox-example xilnvm xilnvm-example xilocp xilpdi xilplmi xilpm xilpm-ng xilpuf xilpuf-example xilrsa xilsecure xilsecure-example xilsem xilskey xilskey-example xilstandalone xiltimer'
 BB_NO_NETWORK = '0'
 _EOF
      $ bitbake wrlinux-image-std
@@ -444,7 +449,7 @@ PREFERRED_PROVIDER_virtual/egl:amd-zynqmp = "libmali-xlnx"
 CUSTOMER_RECIPES:xilinx += "libmali-xlnx"
 CUSTOMER_RECIPES:xilinx += 'kernel-module-mali'
 LICENSE_FLAGS_ACCEPTED += "xilinx"
-MACHINE_FEATURES:amd-zynqmp += " mali400"
+MACHINE_FEATURES:append = " mali400"
 DISTRO_FEATURES:append = " libmali"
 _EOF
      $ bitbake wrlinux-image-std-sato
