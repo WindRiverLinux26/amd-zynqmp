@@ -1,0 +1,36 @@
+From d11b78134080698a4ce2b950a69d598b96b04044 Mon Sep 17 00:00:00 2001
+From: Keerthanna Mohan <keerthanna.mohan@amd.com>
+Date: Thu, 11 Sep 2025 16:05:25 -0700
+Subject: [PATCH 097/190] misc: xilinx-ai-engine: Initializes the return value
+
+commit 84cf5474c8adbcdb9241482c57c7bc178038fc4a from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Initialized the return value to avoid the if statement checking
+the uninitialized garbage return value in aie2ps_set_part_clocks.
+
+Signed-off-by: Keerthanna Mohan <keerthanna.mohan@amd.com>
+Message-ID: <20250911230525.1137841-1-keerthanna.mohan@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/misc/xilinx-ai-engine/ai-engine-aie2ps.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-aie2ps.c b/drivers/misc/xilinx-ai-engine/ai-engine-aie2ps.c
+index 57b23cf327de..1209a8db69b5 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-aie2ps.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-aie2ps.c
+@@ -3594,7 +3594,7 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
+ 	struct aie_location loc;
+ 	struct aie_range prev_range = {};
+ 	u32 prev_ops = 0;
+-	int ret;
++	int ret = -EINVAL;
+ 
+ 	for (loc.col = 0; loc.col < range->size.col; loc.col++) {
+ 		u32 startbit, col_inuse = 0;
+-- 
+2.43.0
+

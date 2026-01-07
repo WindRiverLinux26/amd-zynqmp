@@ -1,0 +1,42 @@
+From 7a419e2584379fa0ae16f344bbd83909db9c94e5 Mon Sep 17 00:00:00 2001
+From: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Date: Fri, 5 Sep 2025 14:47:02 +0530
+Subject: [PATCH 081/190] net: macb: Add QBV capability to Versal_2VE_2VM
+ device
+
+commit f1a857e466739de7980e83d8e29746573ce52490 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Updated the versal2_10gbe_config to include MACB_CAPS_QBV, enabling
+support for time-aware shaper functionality for Versal_2VE_2VM device.
+This aligns the configuration with hardware capabilities for enhanced
+traffic scheduling.
+Also fix capability line wrapping, ensuring code stays within 80 columns.
+
+Signed-off-by: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Reviewed-by: Harini Katakam <harini.katakam@amd.com>
+Message-ID: <20250905091702.2711501-3-vineeth.karumanchi@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/net/ethernet/cadence/macb_main.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/cadence/macb_main.c b/drivers/net/ethernet/cadence/macb_main.c
+index 234a8716f962..2ba94499bc78 100644
+--- a/drivers/net/ethernet/cadence/macb_main.c
++++ b/drivers/net/ethernet/cadence/macb_main.c
+@@ -5268,7 +5268,8 @@ static const struct macb_config versal_config = {
+ 
+ static const struct macb_config versal2_10gbe_config = {
+ 	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO |
+-		MACB_CAPS_GEM_HAS_PTP | MACB_CAPS_BD_RD_PREFETCH | MACB_CAPS_QUEUE_DISABLE,
++		MACB_CAPS_GEM_HAS_PTP | MACB_CAPS_BD_RD_PREFETCH |
++		MACB_CAPS_QUEUE_DISABLE | MACB_CAPS_QBV,
+ 	.dma_burst_length = 16,
+ 	.clk_init = macb_clk_init,
+ 	.init = init_reset_optional,
+-- 
+2.43.0
+

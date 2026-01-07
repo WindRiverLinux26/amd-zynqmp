@@ -1,0 +1,72 @@
+From f7658b3476d31c010497d050f18f87f0d49bc16a Mon Sep 17 00:00:00 2001
+From: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Date: Thu, 2 Oct 2025 20:11:53 -0700
+Subject: [PATCH 146/190] xilinx-ai-engine: add trace for partition teardown
+
+commit 6e730254e3bb2b4208bbcde03750dbe6f1d84702 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add tracepoint to aie_part_teardown.
+
+Signed-off-by: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Acked-by: Gregory Williams <gregory.williams@amd.com>
+Message-ID: <20251003031202.2319372-7-govindarajulu.varadarajan@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/misc/xilinx-ai-engine/ai-engine-reset.c |  2 ++
+ drivers/misc/xilinx-ai-engine/ai-engine-trace.h | 17 +++++++++++++++++
+ 2 files changed, 19 insertions(+)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-reset.c b/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
+index 6cb495fb7353..0bed981cda7a 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
+@@ -1133,6 +1133,7 @@ int aie2ps_part_teardown(struct aie_partition *apart)
+ 	u16 data;
+ 	int ret;
+ 
++	trace_aie_part_teardown(apart);
+ 	ret = mutex_lock_interruptible(&apart->mlock);
+ 	if (ret)
+ 		return ret;
+@@ -1202,6 +1203,7 @@ int aie_part_teardown(struct aie_partition *apart)
+ 	u32 node_id = apart->aperture->node_id;
+ 	int ret;
+ 
++	trace_aie_part_teardown(apart);
+ 	ret = mutex_lock_interruptible(&apart->mlock);
+ 	if (ret)
+ 		return ret;
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-trace.h b/drivers/misc/xilinx-ai-engine/ai-engine-trace.h
+index 0b6b62718c00..0e531bd087de 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-trace.h
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-trace.h
+@@ -799,6 +799,23 @@ TRACE_EVENT(aie_partition_post_reinit,
+ 		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+ );
+ 
++TRACE_EVENT(aie_part_teardown,
++	TP_PROTO(struct aie_partition *apart),
++	TP_ARGS(apart),
++	TP_STRUCT__entry(
++		__field(__u32, partition_id)
++		__field(__u32, start_col)
++		__field(__u32, num_cols)
++	),
++	TP_fast_assign(
++		__entry->partition_id = apart->partition_id;
++		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
++		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
++	),
++	TP_printk("id: %d start_col: %d num_cols: %d",
++		  __entry->partition_id, __entry->start_col, __entry->num_cols)
++);
++
+ TRACE_EVENT(aie_partition_get_fd,
+ 	TP_PROTO(struct aie_partition *apart),
+ 	TP_ARGS(apart),
+-- 
+2.43.0
+

@@ -1,0 +1,40 @@
+From ecc29b033618ea4580ad68c13142df949a2ee3c7 Mon Sep 17 00:00:00 2001
+From: Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+Date: Fri, 10 Oct 2025 16:14:00 +0530
+Subject: [PATCH 169/190] phy: xilinx-xhdmiphy: Fix failing lower resolution
+ modes on Versal Gen2 devices
+
+commit 16d767b5ee8f957606d833c53a1609e0df04cfd7 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Lower resolution modes were failing to work with the Versal Gen2
+device. Update DRU tolerance values to fix this issue.
+
+Signed-off-by: Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1760093040-2194647-1-git-send-email-rajesh.gugulothu@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/phy/xilinx/xhdmiphy.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/phy/xilinx/xhdmiphy.h b/drivers/phy/xilinx/xhdmiphy.h
+index 87a57c708cbd..d29f7d5eb5cb 100644
+--- a/drivers/phy/xilinx/xhdmiphy.h
++++ b/drivers/phy/xilinx/xhdmiphy.h
+@@ -158,8 +158,8 @@
+ #define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK1_MIN	124990000LL
+ #define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK1_MAX	125010000LL
+ #define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2		400000000LL
+-#define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MIN	399990000LL
+-#define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MAX	400010000LL
++#define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MIN	399970000LL
++#define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MAX	400050000LL
+ #define XHDMIPHY_HDMI_GTYE5_LCPLL_REFCLK_MIN	120000000LL
+ #define XHDMIPHY_HDMI_GTYE5_RPLL_REFCLK_MIN	120000000LL
+ 
+-- 
+2.43.0
+

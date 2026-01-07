@@ -1,0 +1,61 @@
+From 97ce363932dffe669430a304a0f6905437b4e356 Mon Sep 17 00:00:00 2001
+From: Asif Ikbal <asif.ikbal@amd.com>
+Date: Tue, 16 Sep 2025 11:55:42 +0530
+Subject: [PATCH 107/190] v4l: xilinx: vpss-scaler: Mark subdev ops struct as
+ const
+
+commit ab9b5eddf109157e1550cd3c0ed090d8d0f2d5e3 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Fix checkpatch warnings by marking v4l2_subdev_video_ops,
+v4l2_subdev_pad_ops, and v4l2_subdev_ops structures as const.
+
+Also fix unwind goto.
+
+Signed-off-by: Asif Ikbal <asif.ikbal@amd.com>
+Message-ID: <1758003942-3610046-5-git-send-email-asif.ikbal@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/media/platform/xilinx/xilinx-vpss-scaler.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/xilinx/xilinx-vpss-scaler.c b/drivers/media/platform/xilinx/xilinx-vpss-scaler.c
+index cdf5f6f75fc5..a0ca0625c7a8 100644
+--- a/drivers/media/platform/xilinx/xilinx-vpss-scaler.c
++++ b/drivers/media/platform/xilinx/xilinx-vpss-scaler.c
+@@ -1816,18 +1816,18 @@ xscaler_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
+ 	return 0;
+ }
+ 
+-static struct v4l2_subdev_video_ops xscaler_video_ops = {
++static const struct v4l2_subdev_video_ops xscaler_video_ops = {
+ 	.s_stream = xscaler_s_stream,
+ };
+ 
+-static struct v4l2_subdev_pad_ops xscaler_pad_ops = {
++static const struct v4l2_subdev_pad_ops xscaler_pad_ops = {
+ 	.enum_mbus_code		= xvip_enum_mbus_code,
+ 	.enum_frame_size	= xscaler_enum_frame_size,
+ 	.get_fmt		= xscaler_get_format,
+ 	.set_fmt		= xscaler_set_format,
+ };
+ 
+-static struct v4l2_subdev_ops xscaler_ops = {
++static const struct v4l2_subdev_ops xscaler_ops = {
+ 	.video  = &xscaler_video_ops,
+ 	.pad    = &xscaler_pad_ops,
+ };
+@@ -2066,7 +2066,7 @@ static int xscaler_probe(struct platform_device *pdev)
+ 	} else {
+ 		ret = xvip_init_resources(&xscaler->xvip);
+ 		if (ret < 0)
+-			return ret;
++			goto res_cleanup;
+ 	}
+ 
+ 	/* Reset the Global IP Reset through a PS GPIO */
+-- 
+2.43.0
+

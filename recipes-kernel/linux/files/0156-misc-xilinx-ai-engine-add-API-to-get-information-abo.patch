@@ -1,0 +1,109 @@
+From 9a5d0611cb45150ed29faf501296e06ff79550e9 Mon Sep 17 00:00:00 2001
+From: Dhananjay Chauhan <dhananjay.chauhan@amd.com>
+Date: Fri, 3 Oct 2025 14:48:40 -0700
+Subject: [PATCH 156/190] misc: xilinx-ai-engine: add API to get information
+ about tiles
+
+commit 9044ef23b7005679f9e532c680c5897468734761 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add an API to retrieve information about the device's tiles, including:
+- Number of columns
+- Number of rows
+- Number of shim rows
+- Number of mem rows
+- Number of core rows
+
+Signed-off-by: Dhananjay Chauhan <dhananjay.chauhan@amd.com>
+Acked-by: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Message-ID: <20251003214840.1297001-1-dhananjay.chauhan@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/misc/xilinx-ai-engine/ai-engine-dev.c | 40 +++++++++++++++++++
+ include/linux/xlnx-ai-engine.h                | 10 +++++
+ 2 files changed, 50 insertions(+)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-dev.c b/drivers/misc/xilinx-ai-engine/ai-engine-dev.c
+index c867e4bc1445..383c0a3a8209 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-dev.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-dev.c
+@@ -822,6 +822,46 @@ struct device *aie_partition_request(struct aie_partition_req *req)
+ }
+ EXPORT_SYMBOL_GPL(aie_partition_request);
+ 
++/**
++ * aie_get_device_info() - exports AI engine device information
++ * @device_info: Pointer to Structure which stores Device information
++ * @return: 0 for success, negative value for failure
++ */
++int aie_get_device_info(struct aie_device_info *device_info)
++{
++	struct device *dev;
++	struct class_dev_iter iter;
++
++	if (!device_info)
++		return -ENOMEM;
++
++	class_dev_iter_init(&iter, aie_class, NULL, NULL);
++	while ((dev = class_dev_iter_next(&iter))) {
++		struct aie_aperture *aperture;
++
++		if (strncmp(dev_name(dev), "aieaperture",
++			    strlen("aieaperture")))
++			continue;
++
++		aperture = dev_get_drvdata(dev);
++		if (!aperture)
++			continue;
++
++		device_info->cols = aperture->range.size.col;
++		device_info->rows = aperture->range.size.row;
++		device_info->core_rows = aperture->adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
++		device_info->mem_rows = aperture->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
++		device_info->shim_rows = aperture->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows;
++
++		class_dev_iter_exit(&iter);
++		return 0;
++	}
++	class_dev_iter_exit(&iter);
++
++	return -ENODEV;
++}
++EXPORT_SYMBOL_GPL(aie_get_device_info);
++
+ /**
+  * aie_partition_get_fd() - get AI engine partition file descriptor
+  * @dev: AI engine partition device pointer
+diff --git a/include/linux/xlnx-ai-engine.h b/include/linux/xlnx-ai-engine.h
+index e1f98a3dd28c..652a2eab7bc7 100644
+--- a/include/linux/xlnx-ai-engine.h
++++ b/include/linux/xlnx-ai-engine.h
+@@ -66,6 +66,15 @@ struct aie_tile_info {
+ 	u16 padding;
+ };
+ 
++/* Data structure to capture the device Information */
++struct aie_device_info {
++	u16 cols;
++	u16 rows;
++	u16 core_rows;
++	u16 mem_rows;
++	u16 shim_rows;
++};
++
+ /* Data structure to capture the dma status */
+ struct aie_dma_status {
+ 	u32 s2mm_sts;
+@@ -150,6 +159,7 @@ int aie_part_rscmgr_set_static_range(struct device *dev,
+ 
+ int aie_get_status_dump(struct device *dev, struct aie_col_status *status);
+ int aie_get_tile_info(struct device *dev, struct aie_tile_info *tile_info);
++int aie_get_device_info(struct aie_device_info *device_info);
+ int aie_partition_read(struct device *dev, struct aie_location loc,
+ 		       size_t offset, size_t len, void *data);
+ int aie_partition_write(struct device *dev, struct aie_location loc,
+-- 
+2.43.0
+

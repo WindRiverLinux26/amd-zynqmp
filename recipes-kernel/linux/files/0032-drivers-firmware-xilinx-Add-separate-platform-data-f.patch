@@ -1,0 +1,56 @@
+From bfcc487bd399b0a9cd67674d0f7d3e218125fb5b Mon Sep 17 00:00:00 2001
+From: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Date: Mon, 18 Aug 2025 04:58:58 -0700
+Subject: [PATCH 032/190] drivers: firmware: xilinx: Add separate platform data
+ for Versal NET
+
+commit 03e27b28e68c9c197b63f1e0db0a3ebed1a570e2 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The platform data for Versal NET was not previously added, as it was shared
+with Versal. However, since the family code differs across platforms, this
+change introduces separate platform data for Versal NET to support its unique
+family code.
+
+Signed-off-by: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+State: not-upstreamable
+Message-ID: <20250818115901.3692021-3-jay.buddhabhatti@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/firmware/xilinx/zynqmp-core.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/firmware/xilinx/zynqmp-core.c b/drivers/firmware/xilinx/zynqmp-core.c
+index 1e86e802f093..755fe09dcb3b 100644
+--- a/drivers/firmware/xilinx/zynqmp-core.c
++++ b/drivers/firmware/xilinx/zynqmp-core.c
+@@ -906,6 +906,14 @@ static const struct platform_fw_data platform_fw_data_versal = {
+ 	.load_pdi_word_swap = false,
+ };
+ 
++static const struct platform_fw_data platform_fw_data_versal_net = {
++	.do_feature_check = do_feature_check_basic,
++	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
++	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
++	/* the word swapping is done in TF-A */
++	.load_pdi_word_swap = false,
++};
++
+ static const struct platform_fw_data platform_fw_data_zynqmp = {
+ 	.do_feature_check = do_feature_check_basic,
+ 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
+@@ -923,6 +931,10 @@ static const struct of_device_id zynqmp_firmware_of_match[] = {
+ 		.compatible = "xlnx,versal-firmware",
+ 		.data = &platform_fw_data_versal,
+ 	},
++	{
++		.compatible = "xlnx,versal-net-firmware",
++		.data = &platform_fw_data_versal_net,
++	},
+ 	{
+ 		.compatible = "xlnx,versal2-firmware",
+ 		.data = &platform_fw_data_versal2,
+-- 
+2.43.0
+

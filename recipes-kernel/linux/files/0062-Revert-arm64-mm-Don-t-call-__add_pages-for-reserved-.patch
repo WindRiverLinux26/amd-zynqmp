@@ -1,0 +1,96 @@
+From 017692edc23db012719ea475d6054fcfc2ac6611 Mon Sep 17 00:00:00 2001
+From: Stewart Hildebrand <stewart.hildebrand@amd.com>
+Date: Fri, 22 Aug 2025 16:03:06 -0400
+Subject: [PATCH 062/190] Revert "arm64: mm: Don't call __add_pages() for
+ reserved memory"
+
+commit ea255429f601182c15e27c536c16cbcea36b96c8 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+This broke the ability to xl create a Xen domU utilizing extended
+regions for grant table mappings.
+
+stew@ubuntu:~$ sudo xl create stew.cfg
+Parsing config from stew.cfg
+[   43.981293] Unable to handle kernel paging request at virtual address fffffdffc2000034
+[   43.983689] Mem abort info:
+[   43.986603]   ESR = 0x0000000096000046
+[   43.990413]   EC = 0x25: DABT (current EL), IL = 32 bits
+[   43.995800]   SET = 0, FnV = 0
+[   43.998931]   EA = 0, S1PTW = 0
+[   44.002151]   FSC = 0x06: level 2 translation fault
+[   44.007111] Data abort info:
+[   44.010069]   ISV = 0, ISS = 0x00000046, ISS2 = 0x00000000
+[   44.015638]   CM = 0, WnR = 1, TnD = 0, TagAccess = 0
+[   44.020771]   GCS = 0, Overlay = 0, DirtyBit = 0, Xs = 0
+[   44.026165] swapper pgtable: 4k pages, 48-bit VAs, pgdp=00000000116ec000
+[   44.032952] [fffffdffc2000034] pgd=100000006fcb5003, p4d=100000006fcb5003, pud=100000006fcb4003, pmd=0000000000000000
+[   44.043661] Internal error: Oops: 0000000096000046 [#1] SMP
+[   44.049293] Modules linked in:
+[   44.052427] CPU: 0 UID: 0 PID: 690 Comm: xl Not tainted 6.12.10-stew #1
+[   44.059123] Hardware name: ZynqMP ZCU102 Rev1.0 (DT)
+[   44.064171] pstate: 80000005 (Nzcv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
+[   44.071217] pc : __init_zone_device_page.constprop.0+0x1c/0x90
+[   44.077134] lr : memmap_init_zone_device+0xbc/0x150
+[   44.082093] sp : ffff8000823bba90
+[   44.085487] x29: ffff8000823bba90 x28: 0000000000000000 x27: ffff000032001d80
+[   44.092709] x26: 0000000000000001 x25: fffffdffc0000000 x24: ffff80008165a378
+[   44.099930] x23: 0000000000000001 x22: 0000000000088000 x21: 0000000000000001
+[   44.107152] x20: fffffdffc2000000 x19: 0000000000080000 x18: 0000000000000001
+[   44.114374] x17: 0000000000000000 x16: 0000000000000000 x15: ffff000087ffffff
+[   44.121595] x14: 00000000000001f0 x13: ffffffffff437000 x12: 0068000000000703
+[   44.128817] x11: 0000000a3d774d02 x10: 0000000000000900 x9 : 0068000000000703
+[   44.136039] x8 : 0000000000088000 x7 : 0000000000000001 x6 : 0000000000000000
+[   44.143261] x5 : 00000000ffffffff x4 : 0000000000000001 x3 : fffffdffc2000008
+[   44.150482] x2 : ffff000032001d80 x1 : 0000000000080000 x0 : fffffdffc2000000
+[   44.157705] Call trace:
+[   44.160228]  __init_zone_device_page.constprop.0+0x1c/0x90
+[   44.165796]  memmap_init_zone_device+0xbc/0x150
+[   44.170407]  memremap_pages+0x240/0x580
+[   44.174323]  xen_alloc_unpopulated_pages+0x1c0/0x330
+[   44.179369]  alloc_empty_pages+0x4c/0xac
+[   44.183372]  privcmd_ioctl_mmap_batch.isra.0+0x49c/0x640
+[   44.188766]  privcmd_ioctl+0x1fc/0xb9c
+[   44.192594]  __arm64_sys_ioctl+0xbc/0xdc
+[   44.196597]  invoke_syscall+0x54/0x11c
+[   44.200425]  el0_svc_common.constprop.0+0x40/0xe0
+[   44.205211]  do_el0_svc+0x1c/0x28
+[   44.208604]  el0_svc+0x30/0xcc
+[   44.211737]  el0t_64_sync_handler+0x120/0x12c
+[   44.216174]  el0t_64_sync+0x190/0x194
+[   44.219920] Code: 910003fd a90153f3 12800005 91002003 (b9003404)
+[   44.226095] ---[ end trace 0000000000000000 ]---
+
+This reverts commit 1773c1539cf24451781c0b23ab218343f3ed5976.
+
+Signed-off-by: Stewart Hildebrand <stewart.hildebrand@amd.com>
+Message-ID: <20250822200308.852899-1-stewart.hildebrand@amd.com>
+State: not-upstreamable
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ arch/arm64/mm/mmu.c | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/mm/mmu.c b/arch/arm64/mm/mmu.c
+index 04ee137b2707..ea80e271301e 100644
+--- a/arch/arm64/mm/mmu.c
++++ b/arch/arm64/mm/mmu.c
+@@ -1359,12 +1359,8 @@ int arch_add_memory(int nid, u64 start, u64 size,
+ 
+ 	memblock_clear_nomap(start, size);
+ 
+-	if (memblock_is_map_memory(start))
+-		ret = __add_pages(nid, start >> PAGE_SHIFT, size >> PAGE_SHIFT,
+-				  params);
+-	else
+-		ret = memblock_clear_nomap(start, size);
+-
++	ret = __add_pages(nid, start >> PAGE_SHIFT, size >> PAGE_SHIFT,
++			   params);
+ 	if (ret)
+ 		__remove_pgd_mapping(swapper_pg_dir,
+ 				     __phys_to_virt(start), size);
+-- 
+2.43.0
+

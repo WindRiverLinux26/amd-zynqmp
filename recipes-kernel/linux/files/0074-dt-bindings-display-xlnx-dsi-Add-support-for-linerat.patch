@@ -1,0 +1,52 @@
+From 5724c0b3a5996a3f066013ef8753aab4143f537a Mon Sep 17 00:00:00 2001
+From: Dhanunjanrao Katta <katta.dhanunjanrao@amd.com>
+Date: Tue, 26 Aug 2025 15:37:59 +0530
+Subject: [PATCH 074/190] dt-bindings: display: xlnx: dsi: Add support for
+ linerate property
+
+commit 7797d58a7a927814249a6aa1a2498cbbb81e94bc from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add the MIPI D-PHY linerate property which is used for DSI
+timing calculations.
+
+Signed-off-by: Dhanunjanrao Katta <katta.dhanunjanrao@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1756202880-11654-2-git-send-email-katta.dhanunjanrao@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../devicetree/bindings/display/xlnx/xlnx,dsi.yaml       | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/display/xlnx/xlnx,dsi.yaml b/Documentation/devicetree/bindings/display/xlnx/xlnx,dsi.yaml
+index 9b27defa8e4d..818fda52d929 100644
+--- a/Documentation/devicetree/bindings/display/xlnx/xlnx,dsi.yaml
++++ b/Documentation/devicetree/bindings/display/xlnx/xlnx,dsi.yaml
+@@ -38,6 +38,14 @@ properties:
+       - const: dphy_clk_200M
+       - const: s_axis_aclk
+ 
++  xlnx,dphy-linerate:
++    description:
++      The D-PHY linerate in Mbps. This value determines the bit rate at
++      which each data lane operates during the high-speed transmission.
++    $ref: /schemas/types.yaml#/definitions/uint32
++    minimum: 80
++    maximum: 2800
++
+   xlnx,dsi-data-type:
+     description: |
+       This denotes the CSI Data type selected in hw design.
+@@ -146,6 +154,7 @@ examples:
+         reg = <0x80000000 0x10000>;
+         clocks = <&misc_clk_0>, <&misc_clk_1>;
+         clock-names = "dphy_clk_200M", "s_axis_aclk";
++        xlnx,dphy-linerate = <800>;
+         xlnx,dsi-num-lanes = <4>;
+         xlnx,dsi-data-type = <0>;
+         xlnx,vpss = <&v_proc_ss_0>;
+-- 
+2.43.0
+

@@ -1,0 +1,59 @@
+From 0c7df3ecafe7de7ba7509e0623337e33b7177167 Mon Sep 17 00:00:00 2001
+From: Amit Kumar Mahapatra <amit.kumar-mahapatra@amd.com>
+Date: Wed, 22 Oct 2025 18:08:28 +0530
+Subject: [PATCH 177/190] mtd: spi-nor: Fix resume failure on Micron multi-die
+ OSPI flashes
+
+commit 80456aee24174ed7381b519c95db4fc42467d01d from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+In the 'commit aea1c088a1e4 ("mtd: spi-nor: Add die erase support for
+Micron multi-die OSPI flash")' 4-byte address mode is enabled for Micron 1G
+and 2G multi-die OSPI flash devices. During resume, the driver resets the
+flash to its default 3-byte address mode. However, the addr_mode_byte flag
+in the spi-nor structure remains set to 4, causing the driver to issue the
+octal enable command using a 4-byte address. Since the flash is now in
+3-byte mode and expects a 3-byte address, this mismatch leads to the resume
+failure.
+
+Update the spi-nor resume logic to issue a 4-byte mode enable command when
+the addr_mode_byte flag is set to 4.
+
+Fixes: aea1c088a1e4 ("mtd: spi-nor: Add die erase support for Micron multi-die OSPI flash")
+Signed-off-by: Amit Kumar Mahapatra <amit.kumar-mahapatra@amd.com>
+Message-ID: <20251022123828.152743-1-amit.kumar-mahapatra@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/mtd/spi-nor/core.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/mtd/spi-nor/core.c b/drivers/mtd/spi-nor/core.c
+index 2ee1134e55ac..a03b0e54088e 100644
+--- a/drivers/mtd/spi-nor/core.c
++++ b/drivers/mtd/spi-nor/core.c
+@@ -3971,6 +3971,7 @@ static int spi_nor_suspend(struct mtd_info *mtd)
+ static void spi_nor_resume(struct mtd_info *mtd)
+ {
+ 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
++	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+ 	struct device *dev = nor->dev;
+ 	int ret;
+ 
+@@ -3978,6 +3979,12 @@ static void spi_nor_resume(struct mtd_info *mtd)
+ 	if (ret)
+ 		dev_err(dev, "device reset failed during resume()\n");
+ 
++	if (params->addr_mode_nbytes == 4) {
++		ret = spi_nor_set_4byte_addr_mode(nor, true);
++		if (ret)
++			dev_err(nor->dev, "Failed to enter 4-byte address mode, err = %d\n", ret);
++	}
++
+ 	/* re-initialize the nor chip */
+ 	ret = spi_nor_init(nor);
+ 	if (ret)
+-- 
+2.43.0
+

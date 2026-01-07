@@ -1,0 +1,72 @@
+From ecfbc410dae282795867a21a2844f576ca2a9fb0 Mon Sep 17 00:00:00 2001
+From: Anish Kadamathikuttiyil Karthikeyan Pillai
+ <anish.kadamathikuttiyil-karthikeyan-pillai@amd.com>
+Date: Wed, 10 Sep 2025 13:20:33 +0100
+Subject: [PATCH 089/190] dt-bindings: thermal: versal: Add AI Engine thermal
+ monitoring support
+
+commit 80053071787decd32b47e5edbefa51d0d2d1b01e from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add a new temperature zone for the AI Engine temperature monitoring.
+The thermal sensor cells is incremented to support the new thermal zone.
+
+Also change node name in example to align with generic name recommendation.
+
+Signed-off-by: Anish Kadamathikuttiyil Karthikeyan Pillai <anish.kadamathikuttiyil-karthikeyan-pillai@amd.com>
+Message-ID: <20250910122035.2046921-3-anish.kadamathikuttiyil-karthikeyan-pillai@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../bindings/thermal/xlnx,versal-thermal.yaml | 21 ++++++++++++-------
+ 1 file changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/thermal/xlnx,versal-thermal.yaml b/Documentation/devicetree/bindings/thermal/xlnx,versal-thermal.yaml
+index ba57c26d1b65..f7996c05468d 100644
+--- a/Documentation/devicetree/bindings/thermal/xlnx,versal-thermal.yaml
++++ b/Documentation/devicetree/bindings/thermal/xlnx,versal-thermal.yaml
+@@ -14,16 +14,16 @@ description:
+   Versal Thermal uses Versal Sysmon hardware for temperature reading
+   It works as sensor interface to be defined in thermal zones.
+   IIO binding channel through Sysmon required to use as temperature
+-  sensor. It uses sysmon-temp-channel mapped in the Sysmon driver.
+-  name to expose temperature information.
+-  Exposed temperature value is converted to millicelcius scale.
++  sensor. It takes temperature values from versal processing system
++  sysmon and satellite sysmon sensors close to AI Engine through IIO
++  channels. Exposed temperature value is converted to millicelcius scale.
+ 
+ properties:
+   compatible:
+     const: xlnx,versal-thermal
+ 
+   '#thermal-sensor-cells':
+-    const: 0
++    const: 1
+ 
+   io-channels:
+     maxItems: 1
+@@ -41,10 +41,15 @@ additionalProperties: false
+ 
+ examples:
+   - |
+-    versal-thermal-sensor {
++    thermal-sensor {
+         compatible = "xlnx,versal-thermal";
+-        #thermal-sensor-cells = <0>;
+-        io-channels = <&sysmon0>;
+-        io-channel-names = "sysmon-temp-channel";
++        #thermal-sensor-cells = <1>;
++        io-channels = <&sysmon0 15>, <&sysmon0 7>, <&sysmon0 8>,
++                      <&sysmon0 9>, <&sysmon0 10>, <&sysmon0 11>,
++                      <&sysmon0 12>, <&sysmon0 13>, <&sysmon0 14>;
++        io-channel-names = "sysmon-temp-channel", "aie-temp-ch1",
++                           "aie-temp-ch2", "aie-temp-ch3", "aie-temp-ch4",
++                           "aie-temp-ch5", "aie-temp-ch6", "aie-temp-ch7",
++                           "aie-temp-ch8";
+     };
+ ...
+-- 
+2.43.0
+

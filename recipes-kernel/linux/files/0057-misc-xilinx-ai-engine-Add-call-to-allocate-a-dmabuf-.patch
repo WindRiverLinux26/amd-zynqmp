@@ -1,0 +1,281 @@
+From 20bc17ab3c8ed5f59c6345f8d17f9a817544869c Mon Sep 17 00:00:00 2001
+From: Gregory Williams <gregory.williams@amd.com>
+Date: Wed, 20 Aug 2025 16:53:27 -0700
+Subject: [PATCH 057/190] misc: xilinx-ai-engine: Add call to allocate a dmabuf
+ buffer
+
+commit 92b479f5088cba633f14445782f201bbfea62be6 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Adds call to allocate a dmabuf buffer for use within kernel space. With
+given size, the call will create a dmabuf, attach it to the partition,
+then return the virtual address of the buffer and the file descriptor.
+Also adds call to free the dmabuf.
+
+Signed-off-by: Gregory Williams <gregory.williams@amd.com>
+Acked-by: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Message-ID: <20250820235329.500334-5-gregory.williams@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/misc/xilinx-ai-engine/ai-engine-dma.c | 76 +++++++++++++------
+ .../xilinx-ai-engine/ai-engine-internal.h     |  5 ++
+ drivers/misc/xilinx-ai-engine/ai-engine-mem.c | 70 +++++++++++++++++
+ 3 files changed, 129 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-dma.c b/drivers/misc/xilinx-ai-engine/ai-engine-dma.c
+index f72b14a8b2ba..db94d127a9c6 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-dma.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-dma.c
+@@ -480,32 +480,26 @@ int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
+ }
+ 
+ /**
+- * aie_part_attach_dmabuf_req() - Handle attaching dmabuf to an AI engine
+- *				  partition request
++ * aie_part_attach_dmabuf_fd() - Handle attaching dmabuf to an AI engine
++ *				 partition for given dmabuf file descriptor
+  * @apart: AI engine partition
+- * @user_args: user AI engine dmabuf argument
++ * @dmabuf_fd: DMABUF file descriptor
+  *
+  * @return: 0 for success, negative value for failure
+  *
+  * This function attaches a dmabuf to the specified AI engine partition and map
+  * the attachment. It checks if the dmabuf is already attached, if it is not
+- * attached, attach it. It returns the number of entries of the attachment to
+- * the AI engine dmabuf user argument. If user wants to know the sg list, it
+- * can use AI engine get sg ioctl.
++ * attached, attach it.
+  */
+-long aie_part_attach_dmabuf_req(struct aie_partition *apart,
+-				void __user *user_args)
++long aie_part_attach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd)
+ {
+ 	struct aie_dmabuf *adbuf;
+ 	struct dma_buf *dbuf;
+ 	long ret;
+-	int dmabuf_fd = (int)(uintptr_t)user_args;
+ 
+-	trace_aie_part_attach_dmabuf_req(apart, dmabuf_fd);
+ 	dbuf = dma_buf_get(dmabuf_fd);
+ 	if (IS_ERR(dbuf)) {
+-		dev_err(&apart->dev, "failed to get dmabuf from %d.\n",
+-			dmabuf_fd);
++		dev_err(&apart->dev, "failed to get dmabuf from %d", dmabuf_fd);
+ 		return PTR_ERR(dbuf);
+ 	}
+ 
+@@ -524,7 +518,7 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
+ 	mutex_unlock(&apart->mlock);
+ 
+ 	if (IS_ERR(adbuf)) {
+-		dev_err(&apart->dev, "failed to attach dmabuf\n");
++		dev_err(&apart->dev, "failed to attach dmabuf");
+ 		dma_buf_put(dbuf);
+ 		return PTR_ERR(adbuf);
+ 	}
+@@ -533,30 +527,48 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
+ }
+ 
+ /**
+- * aie_part_detach_dmabuf_req() - Handle detaching dmabuf from an AI engine
++ * aie_part_attach_dmabuf_req() - Handle attaching dmabuf to an AI engine
+  *				  partition request
+  * @apart: AI engine partition
+  * @user_args: user AI engine dmabuf argument
+  *
+  * @return: 0 for success, negative value for failure
+  *
++ * This function attaches a dmabuf to the specified AI engine partition and map
++ * the attachment. It checks if the dmabuf is already attached, if it is not
++ * attached, attach it. It returns the number of entries of the attachment to
++ * the AI engine dmabuf user argument. If user wants to know the sg list, it
++ * can use AI engine get sg ioctl.
++ */
++long aie_part_attach_dmabuf_req(struct aie_partition *apart,
++				void __user *user_args)
++{
++	int dmabuf_fd = (int)(uintptr_t)user_args;
++
++	trace_aie_part_attach_dmabuf_req(apart, dmabuf_fd);
++	return aie_part_attach_dmabuf_fd(apart, dmabuf_fd);
++}
++
++/**
++ * aie_part_detach_dmabuf_fd() - Handle detaching dmabuf from an AI engine
++ *				 partition given a file descriptor
++ * @apart: AI engine partition
++ * @dmabuf_fd: DMABUF file descriptor
++ *
++ * @return: 0 for success, negative value for failure
++ *
+  * This function unmaps and detaches a dmabuf from the specified AI engine
+  * partition.
+  */
+-long aie_part_detach_dmabuf_req(struct aie_partition *apart,
+-				void __user *user_args)
++long aie_part_detach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd)
+ {
+ 	struct aie_dmabuf *adbuf;
+ 	struct dma_buf *dbuf;
+-	int dmabuf_fd;
+ 	int ret;
+ 
+-	dmabuf_fd = (int)(uintptr_t)user_args;
+-
+-	trace_aie_part_detach_dmabuf_req(apart, dmabuf_fd);
+ 	dbuf = dma_buf_get(dmabuf_fd);
+ 	if (IS_ERR(dbuf)) {
+-		dev_err(&apart->dev, "failed to get dmabuf %d.\n", dmabuf_fd);
++		dev_err(&apart->dev, "failed to get dmabuf %d", dmabuf_fd);
+ 		return PTR_ERR(dbuf);
+ 	}
+ 
+@@ -569,7 +581,7 @@ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
+ 	adbuf = aie_part_find_dmabuf(apart, dbuf);
+ 	dma_buf_put(dbuf);
+ 	if (!adbuf) {
+-		dev_err(&apart->dev, "failed to find dmabuf %d.\n", dmabuf_fd);
++		dev_err(&apart->dev, "failed to find dmabuf %d", dmabuf_fd);
+ 		mutex_unlock(&apart->mlock);
+ 		return -EINVAL;
+ 	}
+@@ -581,6 +593,26 @@ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
+ 	return 0;
+ }
+ 
++/**
++ * aie_part_detach_dmabuf_req() - Handle detaching dmabuf from an AI engine
++ *				  partition request
++ * @apart: AI engine partition
++ * @user_args: user AI engine dmabuf argument
++ *
++ * @return: 0 for success, negative value for failure
++ *
++ * This function unmaps and detaches a dmabuf from the specified AI engine
++ * partition.
++ */
++long aie_part_detach_dmabuf_req(struct aie_partition *apart,
++				void __user *user_args)
++{
++	int dmabuf_fd = (int)(uintptr_t)user_args;
++
++	trace_aie_part_detach_dmabuf_req(apart, dmabuf_fd);
++	return aie_part_detach_dmabuf_fd(apart, dmabuf_fd);
++}
++
+ /**
+  * aie_part_set_bd() - Set AI engine SHIM DMA buffer descriptor
+  * @apart: AI engine partition
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-internal.h b/drivers/misc/xilinx-ai-engine/ai-engine-internal.h
+index 820cdf999a77..8c091961a07d 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-internal.h
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-internal.h
+@@ -1670,8 +1670,10 @@ int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
+ 
+ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
+ 				void __user *user_args);
++long aie_part_attach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd);
+ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
+ 				void __user *user_args);
++long aie_part_detach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd);
+ long aie_part_set_bd_from_user(struct aie_partition *apart,
+ 					void __user *user_args);
+ long aie_part_set_bd(struct aie_partition *apart,
+@@ -1859,7 +1861,10 @@ u32 aie_get_core_lr(struct aie_partition *apart,
+ u32 aie_get_core_sp(struct aie_partition *apart,
+ 		    struct aie_location *loc);
+ int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size);
++void *aie_dma_mem_alloc_buffer(struct aie_partition *apart, size_t bufsize,
++			       int *dmabuf_fd);
+ int aie_dma_mem_free(int fd);
++void aie_dma_mem_free_buffer(struct aie_partition *apart, int dmabuf_fd);
+ int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
+ 			     enum dma_data_direction direction);
+ int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-mem.c b/drivers/misc/xilinx-ai-engine/ai-engine-mem.c
+index 0aae92eaa592..5b4d1665d0e1 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-mem.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-mem.c
+@@ -344,6 +344,76 @@ int aie_dma_mem_free(int fd)
+ 	return 0;
+ }
+ 
++/**
++ * aie_dma_mem_alloc_buffer() - Allocates dma memory, creates dmabuf, attaches
++ *				dmabuf to ai-engine partition and returns
++ *				virtual address of the buffer and dmabuf file
++ *				descriptor.
++ * @apart: AI Engine partition instance
++ * @bufsize: buffer size
++ * @dmabuf_fd: where dmabuf file descriptor is stored
++ * @return: virtual address for buffer error pointer for failure
++ */
++void *aie_dma_mem_alloc_buffer(struct aie_partition *apart, size_t bufsize,
++			       int *dmabuf_fd)
++{
++	struct aie_part_mem *pmem;
++	struct dma_buf *dbuf;
++	int ret, fd;
++
++	if (!apart || !dmabuf_fd || bufsize == 0) {
++		dev_err(&apart->dev, "Invalid arguments");
++		return ERR_PTR(-EINVAL);
++	}
++
++	fd = aie_dma_mem_alloc(apart, bufsize);
++	if (fd < 0) {
++		dev_err(&apart->dev, "Failed to allocate dma memory");
++		return ERR_PTR(fd);
++	}
++	*dmabuf_fd = fd;
++
++	ret = aie_part_attach_dmabuf_fd(apart, fd);
++	if (ret < 0) {
++		aie_dma_mem_free(fd);
++		return ERR_PTR(ret);
++	}
++
++	dbuf = dma_buf_get(fd);
++	if (IS_ERR(dbuf)) {
++		ret = PTR_ERR(dbuf);
++		goto err;
++	}
++
++	pmem = (struct aie_part_mem *)dbuf->priv;
++	if (!pmem) {
++		dev_err(&apart->dev, "Failed to get partition memory instance");
++		ret = -EINVAL;
++		goto err;
++	}
++
++	dma_buf_put(dbuf);
++	return (void *)pmem->mem.offset;
++err:
++	dma_buf_put(dbuf);
++	aie_part_detach_dmabuf_fd(apart, fd);
++	aie_dma_mem_free(fd);
++	return ERR_PTR(ret);
++}
++
++/**
++ * aie_dma_mem_free_buffer() - Called to free buffer created with
++ *			       aie_dma_mem_alloc_buffer(). Will detach the
++ *			       dmabuf and then free dma memory.
++ * @apart: AI Engine partition instance
++ * @dmabuf_fd: dmabuf file descriptor returned by aie_dma_mem_alloc_buffer()
++ */
++void aie_dma_mem_free_buffer(struct aie_partition *apart, int dmabuf_fd)
++{
++	aie_part_detach_dmabuf_fd(apart, dmabuf_fd);
++	aie_dma_mem_free(dmabuf_fd);
++}
++
+ /**
+  * aie_mem_get_info() - get AI engine memories information
+  * @apart: AI engine partition
+-- 
+2.43.0
+

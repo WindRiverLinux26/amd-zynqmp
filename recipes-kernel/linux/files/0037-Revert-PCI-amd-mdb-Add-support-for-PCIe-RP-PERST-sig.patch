@@ -1,0 +1,71 @@
+From f7ad5ebcfcc368b2f3eaa39cdaab724aab481561 Mon Sep 17 00:00:00 2001
+From: Sai Krishna Musham <sai.krishna.musham@amd.com>
+Date: Fri, 15 Aug 2025 14:25:00 +0530
+Subject: [PATCH 037/190] Revert "PCI: amd-mdb: Add support for PCIe RP PERST#
+ signal"
+
+commit f005e1bdb01159f516e4af6cae111c8471b59b31 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+This reverts commit d3b552727bda66a29e8f6a405a0e7664c156b236.
+The patch to add support for PCIe RP PERST# signal handling has been
+applied to mainline. This revert is to align with the upstream state.
+
+Signed-off-by: Sai Krishna Musham <sai.krishna.musham@amd.com>
+Message-ID: <20250815085503.791277-3-sai.krishna.musham@amd.com>
+State: not-upstreamable
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/pci/controller/dwc/pcie-amd-mdb.c | 21 ---------------------
+ 1 file changed, 21 deletions(-)
+
+diff --git a/drivers/pci/controller/dwc/pcie-amd-mdb.c b/drivers/pci/controller/dwc/pcie-amd-mdb.c
+index 126842f5d6fe..4eb2a4e8189d 100644
+--- a/drivers/pci/controller/dwc/pcie-amd-mdb.c
++++ b/drivers/pci/controller/dwc/pcie-amd-mdb.c
+@@ -18,7 +18,6 @@
+ #include <linux/resource.h>
+ #include <linux/types.h>
+ 
+-#include "../../pci.h"
+ #include "pcie-designware.h"
+ 
+ #define AMD_MDB_TLP_IR_STATUS_MISC		0x4C0
+@@ -409,7 +408,6 @@ static int amd_mdb_add_pcie_port(struct amd_mdb_pcie *pcie,
+ 	struct dw_pcie *pci = &pcie->pci;
+ 	struct dw_pcie_rp *pp = &pci->pp;
+ 	struct device *dev = &pdev->dev;
+-	struct gpio_desc *reset_gpio;
+ 	int err;
+ 
+ 	pcie->slcr = devm_platform_ioremap_resource_byname(pdev, "slcr");
+@@ -428,25 +426,6 @@ static int amd_mdb_add_pcie_port(struct amd_mdb_pcie *pcie,
+ 
+ 	pp->ops = &amd_mdb_pcie_host_ops;
+ 
+-	/* Request the GPIO for PCIe reset signal and assert */
+-	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+-	if (IS_ERR(reset_gpio))
+-		return dev_err_probe(dev, PTR_ERR(reset_gpio),
+-				     "Failed to request reset GPIO\n");
+-
+-	if (reset_gpio) {
+-		/*
+-		 * "PERST# active time", as per Table 2-10: Power Sequencing
+-		 * and Reset Signal Timings of the PCIe Electromechanical
+-		 * Specification, Revision 6.0, symbol "T_PERST".
+-		 */
+-		udelay(100);
+-
+-		/* Deassert the reset signal */
+-		gpiod_set_value_cansleep(reset_gpio, 0);
+-		mdelay(PCIE_T_RRS_READY_MS);
+-	}
+-
+ 	err = dw_pcie_host_init(pp);
+ 	if (err) {
+ 		dev_err(dev, "Failed to initialize host, err=%d\n", err);
+-- 
+2.43.0
+

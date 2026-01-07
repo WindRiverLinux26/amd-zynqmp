@@ -1,0 +1,127 @@
+From 1a5d33484cbfccad0bfcfa5c0b44239e5da222d2 Mon Sep 17 00:00:00 2001
+From: Sai Krishna Musham <sai.krishna.musham@amd.com>
+Date: Wed, 10 Sep 2025 12:30:45 +0530
+Subject: [PATCH 131/190] arm64: versal: Add PCIe RP PERST# support for CPM4,
+ CPM5 and Rhino
+
+commit 43522cedd235baf5b0c8797b7be99c6065c31ac9 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Update reg property for CPM4 and CPM5 controller 0 and add reset-gpios
+property for VMK180 and VPK120 to enable PCIe Root Port (RP) PERST#
+support.
+
+Add PCIe Root Port PERST# support for Rhino Board.
+
+Correct Bridge registers address size for CPM5 controller 0 and Rhino
+board.
+
+Keep CPM PCIe nodes disabled in base versal.dtsi for VMK180 and VPK120
+boards: some designs omit the PCIe block and ECAM access would
+hang the system if status were forced to "okay". Boards that
+instantiate the block enable it locally.
+
+Remove unevaluated properties to align with dt binding.
+
+Signed-off-by: Sai Krishna Musham <sai.krishna.musham@amd.com>
+Message-ID: <20250910070045.3655610-1-sai.krishna.musham@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts |  3 +++
+ arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts |  4 +++-
+ arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts |  4 +++-
+ arch/arm64/boot/dts/xilinx/versal.dtsi            | 12 ++++++------
+ 4 files changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts b/arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts
+index 4c81b164acc5..30e2f1b6cd51 100644
+--- a/arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts
++++ b/arch/arm64/boot/dts/xilinx/versal-vmk180-revA.dts
+@@ -41,6 +41,9 @@ aliases {
+ 
+ /* PMC_MIO 0 -12 - configuration header QSPI/OSPI/EMMC */
+ /* FIXME PMC_MIO37 ZU4_TRIGGER/PMC_MIO37/38 PCIE */
++&cpm_pciea {
++	reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
++};
+ 
+ &can1 { /* MIO40-41 */
+ 	status = "okay";
+diff --git a/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts b/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts
+index c5b11a114f23..2632a1f4a1c8 100644
+--- a/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts
++++ b/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts
+@@ -95,7 +95,9 @@ &i2c1 { /* PMC_MIO44/45 */
+ 	status = "okay";
+ };
+ 
+-/* PCIe at MIO 38/39/40/50 */
++&cpm5_pcie { /* PCIe at MIO 38/39/40/50 */
++	reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
++};
+ 
+ &gem0 { /* PMC_MIO_48 - reset, LPD_MIO0-11 , mdio LPD_MIO24/25 */
+ 	status = "okay";
+diff --git a/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts b/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts
+index bb997a8ce107..300d83cc91b1 100644
+--- a/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts
++++ b/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts
+@@ -106,7 +106,9 @@ eeprom: eeprom@54 { /* u34 - m24128 16kB */
+ 	};
+ };
+ 
+-/* PCIe at MIO 38/39/40/50 */
++&cpm5_pcie { /* PCIe at MIO 38/39/40/50 */
++	reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
++};
+ 
+ &gem0 { /* PMC_MIO_48 - reset, LPD_MIO0-11 , mdio LPD_MIO24/25 */
+ 	status = "okay";
+diff --git a/arch/arm64/boot/dts/xilinx/versal.dtsi b/arch/arm64/boot/dts/xilinx/versal.dtsi
+index cfb0e948b280..8740d35fb8ba 100644
+--- a/arch/arm64/boot/dts/xilinx/versal.dtsi
++++ b/arch/arm64/boot/dts/xilinx/versal.dtsi
+@@ -648,15 +648,15 @@ cpm_pciea: pci@fca10000 {
+ 					<0 0 0 3 &pcie_intc_0 2>,
+ 					<0 0 0 4 &pcie_intc_0 3>;
+ 			interrupt-map-mask = <0 0 0 7>;
+-			interrupt-names = "misc";
+ 			interrupts = <0 72 4>;
+ 			bus-range = <0x00 0xff>;
+ 			ranges = <0x02000000 0x00000000 0xe0010000 0x0 0xe0010000 0x00000000 0x10000000>,
+ 				 <0x43000000 0x00000080 0x00000000 0x00000080 0x00000000 0x00000000 0x80000000>;
+ 			msi-map = <0x0 &gic_its 0x0 0x10000>;
+ 			reg = <0x0 0xfca10000 0x0 0x1000>,
+-			      <0x6 0x00000000 0x0 0x1000000>;
+-			reg-names = "cpm_slcr", "cfg";
++			      <0x6 0x00000000 0x0 0x1000000>,
++			      <0x0 0xfca00000 0x0 0x10000>;
++			reg-names = "cpm_slcr", "cfg", "cpm_crx";
+ 			pcie_intc_0: interrupt-controller {
+ 				#address-cells = <0>;
+ 				#interrupt-cells = <1>;
+@@ -676,7 +676,6 @@ cpm5_pcie: pcie@fcdd0000 {
+ 					<0 0 0 3 &pcie_intc_1 2>,
+ 					<0 0 0 4 &pcie_intc_1 3>;
+ 			interrupt-map-mask = <0 0 0 7>;
+-			interrupt-names = "misc";
+ 			interrupts = <0 72 4>;
+ 			bus-range = <0x00 0xff>;
+ 			ranges = <0x02000000 0x0 0xe0000000 0x0 0xe0000000 0x0 0x10000000>,
+@@ -684,8 +683,9 @@ cpm5_pcie: pcie@fcdd0000 {
+ 			msi-map = <0x0 &gic_its 0x0 0x10000>;
+ 			reg = <0x00 0xfcdd0000 0x00 0x1000>,
+ 			      <0x06 0x00000000 0x00 0x1000000>,
+-			      <0x00 0xfce20000 0x00 0x1000000>;
+-			reg-names = "cpm_slcr", "cfg", "cpm_csr";
++			      <0x00 0xfce20000 0x00 0x10000>,
++			      <0x00 0xfcdc0000 0x00 0x10000>;
++			reg-names = "cpm_slcr", "cfg", "cpm_csr", "cpm_crx";
+ 			pcie_intc_1: interrupt-controller {
+ 				#address-cells = <0>;
+ 				#interrupt-cells = <1>;
+-- 
+2.43.0
+

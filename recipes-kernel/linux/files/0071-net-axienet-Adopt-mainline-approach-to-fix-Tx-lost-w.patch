@@ -1,0 +1,112 @@
+From f0412a7456413db0dd21073b6c15706dfecd8fd1 Mon Sep 17 00:00:00 2001
+From: Suraj Gupta <suraj.gupta2@amd.com>
+Date: Mon, 25 Aug 2025 20:56:09 +0530
+Subject: [PATCH 071/190] net: axienet: Adopt mainline approach to fix Tx lost
+ wakeup
+
+commit e5d7ae83f03284ceac9818884e80b64b993de063 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Lost wakeup issue in Tx path was fixed in mainline as part of
+commit bb193e3db8b8 ("net: axienet: fix for TX busy handling"). But it was
+overwritten while adding MCDMA support. Include changes from this
+mainline commit.
+
+Fixes: b888c996dc3f ("net: axienet: added multichannel DMA support")
+Signed-off-by: Suraj Gupta <suraj.gupta2@amd.com>
+Reviewed-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Message-ID: <20250825152610.195229-2-suraj.gupta2@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../net/ethernet/xilinx/xilinx_axienet_main.c | 54 +++++++++----------
+ 1 file changed, 25 insertions(+), 29 deletions(-)
+
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index f02194c02ebc..51208ae5c2d9 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -1486,23 +1486,16 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
+ 	struct axienet_local *lp = q->lp;
+ #ifdef CONFIG_AXIENET_HAS_MCDMA
+ 	struct aximcdma_bd *cur_p;
+-
+-	if (CIRC_SPACE(q->tx_bd_tail, q->tx_bd_ci, lp->tx_bd_num) < (num_frag + 1))
+-		return NETDEV_TX_BUSY;
+-
+-	cur_p = &q->txq_bd_v[(q->tx_bd_tail + num_frag) % lp->tx_bd_num];
+-	if (cur_p->sband_stats & XMCDMA_BD_STS_ALL_MASK)
+-		return NETDEV_TX_BUSY;
+ #else
+ 	struct axidma_bd *cur_p;
++#endif
+ 
+-	if (CIRC_SPACE(q->tx_bd_tail, q->tx_bd_ci, lp->tx_bd_num) < (num_frag + 1))
+-		return NETDEV_TX_BUSY;
+-
+-	cur_p = &q->tx_bd_v[(q->tx_bd_tail + num_frag) % lp->tx_bd_num];
+-	if (cur_p->status & XAXIDMA_BD_STS_ALL_MASK)
++	/* Ensure we see all descriptor updates from device or TX polling */
++	rmb();
++	cur_p = &q->tx_bd_v[(READ_ONCE(q->tx_bd_tail) + num_frag) %
++			     lp->tx_bd_num];
++	if (cur_p->cntrl)
+ 		return NETDEV_TX_BUSY;
+-#endif
+ 	return 0;
+ }
+ 
+@@ -1951,23 +1944,15 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
+ #endif
+ 	spin_lock_irqsave(&q->tx_lock, flags);
+-	if (axienet_check_tx_bd_space(q, num_frag)) {
+-		if (netif_queue_stopped(ndev)) {
+-			spin_unlock_irqrestore(&q->tx_lock, flags);
+-			return NETDEV_TX_BUSY;
+-		}
++	if (axienet_check_tx_bd_space(q, num_frag + 1)) {
++		/* Should not happen as last start_xmit call should have
++		 * checked for sufficient space and queue should only be
++		 * woken when sufficient space is available.
++		 */
+ 		netif_stop_queue(ndev);
+-
+-		/* Matches barrier in axienet_free_tx_chain */
+-		smp_mb();
+-
+-		/* Space might have just been freed - check again */
+-		if (axienet_check_tx_bd_space(q, num_frag)) {
+-			spin_unlock_irqrestore(&q->tx_lock, flags);
+-			return NETDEV_TX_BUSY;
+-		}
+-
+-		netif_wake_queue(ndev);
++		if (net_ratelimit())
++			netdev_warn(ndev, "TX ring unexpectedly full\n");
++		return NETDEV_TX_BUSY;
+ 	}
+ 
+ #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+@@ -2101,6 +2086,17 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ 	if (++q->tx_bd_tail >= lp->tx_bd_num)
+ 		q->tx_bd_tail = 0;
+ 
++	/* Stop queue if next transmit may not have space */
++	if (axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1)) {
++		netif_stop_queue(ndev);
++
++		/* Matches barrier in axienet_start_xmit_done */
++		smp_mb();
++
++		/* Space might have just been freed - check again */
++		if (!axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1))
++			netif_wake_queue(ndev);
++	}
+ 	spin_unlock_irqrestore(&q->tx_lock, flags);
+ 	return NETDEV_TX_OK;
+ }
+-- 
+2.43.0
+

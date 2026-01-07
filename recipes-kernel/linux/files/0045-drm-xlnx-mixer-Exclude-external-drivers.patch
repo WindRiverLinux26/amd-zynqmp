@@ -1,0 +1,109 @@
+From 526aa6f209993091e956c3cf2b940fe70a3065c0 Mon Sep 17 00:00:00 2001
+From: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Date: Wed, 20 Aug 2025 17:12:59 -0700
+Subject: [PATCH 045/190] drm: xlnx: mixer: Exclude external drivers
+
+commit 874e492cd23da37158ddcad20a9f8960ae5bf3da from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+There is an assumption that all devices connected to drm master device
+are driven by corresponding component within xlnx drm driver. This isn't
+a case for zynqmp dpsub that's covered by an external driver. Introduce
+list of supported components and filter out all incompatibilities during
+device tree topology check.
+
+There is a plan to transition all PL DRM drivers to DRM bridge framework.
+This will be a staged approach convering one driver at a time. Upon each
+driver transition the corresponding compatible string will be removed from
+the xlnx_compatible_components_list.
+
+Signed-off-by: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20250821001303.1178351-3-anatoliy.klymenko@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/xlnx/xlnx_drv.c | 52 +++++++++++++++++++++++++++++++--
+ 1 file changed, 49 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/xlnx/xlnx_drv.c b/drivers/gpu/drm/xlnx/xlnx_drv.c
+index 196c78f1069a..6a95e1057758 100644
+--- a/drivers/gpu/drm/xlnx/xlnx_drv.c
++++ b/drivers/gpu/drm/xlnx/xlnx_drv.c
+@@ -300,6 +300,48 @@ static const struct component_master_ops xlnx_master_ops = {
+ 	.unbind	= xlnx_unbind,
+ };
+ 
++/*
++ * This is the list of the compatible strings for the PL DRM drivers that still
++ * utilize the xlnx bridge interface. This list needs to be updated with every
++ * additions of the new drivers, compatible string updates and drivers
++ * transitions to the DRM bridge framework. The list should be removed as soon
++ * as the transition of all PL DRM drivers complete.
++ */
++static const char * const xlnx_compatible_components_list[] = {
++	"xlnx,v-mix-5.2",
++	"xlnx,mixer-5.0",
++	"xlnx,mixer-4.0",
++	"xlnx,mixer-3.0",
++	"xlnx,vpss-csc",
++	"xlnx,v-dp-txss-3.0",
++	"xlnx,v-dp-txss-3.1",
++	"xlnx,dsi",
++	"xlnx,v-hdmi-txss1-1.1",
++	"xlnx,v-hdmi-txss1-1.2",
++	"xlnx,pl-disp",
++	"xlnx,vpss-scaler",
++	"xlnx,vpss-scaler-2.2",
++	"xlnx,sdi-tx",
++	"xlnx,bridge-v-tc-6.1",
++};
++
++static bool xlnx_check_compatible_component(struct device_node *node)
++{
++	const char *comp_str = NULL;
++	struct property *comp_prop = of_find_property(node, "compatible", NULL);
++
++	do {
++		int i;
++
++		comp_str = of_prop_next_string(comp_prop, comp_str);
++		for (i = 0; comp_str && i < ARRAY_SIZE(xlnx_compatible_components_list); ++i)
++			if (!strcmp(comp_str, xlnx_compatible_components_list[i]))
++				return true;
++	} while (comp_prop && comp_str);
++
++	return false;
++}
++
+ static int xlnx_of_component_probe(struct device *master_dev,
+ 				   int (*compare_of)(struct device *, void *),
+ 				   const struct component_master_ops *m_ops)
+@@ -330,7 +372,9 @@ static int xlnx_of_component_probe(struct device *master_dev,
+ 			continue;
+ 		}
+ 
+-		component_match_add(master_dev, &match, compare_of, parent);
++		if (xlnx_check_compatible_component(parent))
++			component_match_add(master_dev, &match, compare_of, parent);
++
+ 		of_node_put(parent);
+ 		of_node_put(port);
+ 	}
+@@ -360,8 +404,10 @@ static int xlnx_of_component_probe(struct device *master_dev,
+ 				of_node_put(remote);
+ 				continue;
+ 			}
+-			component_match_add(master_dev, &match, compare_of,
+-					    remote);
++
++			if (xlnx_check_compatible_component(remote))
++				component_match_add(master_dev, &match, compare_of, remote);
++
+ 			of_node_put(remote);
+ 		}
+ 		of_node_put(parent);
+-- 
+2.43.0
+

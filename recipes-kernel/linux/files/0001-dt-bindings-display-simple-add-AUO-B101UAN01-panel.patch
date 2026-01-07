@@ -1,0 +1,36 @@
+From a77a507e37c599aa84e6c51d9308500033da56ed Mon Sep 17 00:00:00 2001
+From: Dhanunjanrao Katta <katta.dhanunjanrao@amd.com>
+Date: Wed, 9 Jul 2025 12:57:29 +0530
+Subject: [PATCH 001/190] dt-bindings: display: simple: add AUO B101UAN01 panel
+
+commit cffd7087b9a669f45bdcaa4e9db254c7de9f0d11 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add AUO B101UAN01 10.1" Amorphous Silicon TFT LCD panel
+compatible string.
+
+Signed-off-by: Dhanunjanrao Katta <katta.dhanunjanrao@amd.com>
+Message-ID: <1752046050-21595-2-git-send-email-katta.dhanunjanrao@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../devicetree/bindings/display/panel/panel-simple.yaml         | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/display/panel/panel-simple.yaml b/Documentation/devicetree/bindings/display/panel/panel-simple.yaml
+index b89e39790579..7429aa4490e5 100644
+--- a/Documentation/devicetree/bindings/display/panel/panel-simple.yaml
++++ b/Documentation/devicetree/bindings/display/panel/panel-simple.yaml
+@@ -41,6 +41,8 @@ properties:
+       - ampire,am800600p5tmqw-tb8h
+         # AU Optronics Corporation 10.1" WSVGA TFT LCD panel
+       - auo,b101aw03
++        # AU Optronics Corporation 10.1" Amorphous Silicon TFT LCD panel
++      - auo,b101uan01
+         # AU Optronics Corporation 10.1" WXGA TFT LCD panel
+       - auo,b101xtn01
+         # AU Optronics Corporation 11.6" HD (1366x768) color TFT-LCD panel
+-- 
+2.43.0
+

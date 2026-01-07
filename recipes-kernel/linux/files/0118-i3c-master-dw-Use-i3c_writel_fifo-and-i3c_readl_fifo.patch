@@ -1,0 +1,80 @@
+From 7af54350a8d99d1873aacc011149e17115688e8c Mon Sep 17 00:00:00 2001
+From: Jorge Marques <jorge.marques@analog.com>
+Date: Thu, 25 Sep 2025 21:20:02 +0530
+Subject: [PATCH 118/190] i3c: master: dw: Use i3c_writel_fifo() and
+ i3c_readl_fifo()
+
+commit c34df0fe930e3f0a61496c7cae2b94ecf34ad59f from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Use common inline i3c_writel_fifo()/i3c_readl_fifo() methods to
+simplify code since the FIFO of controller is a 32bit width.
+
+Signed-off-by: Jorge Marques <jorge.marques@analog.com>
+Reviewed-by: Frank Li <Frank.Li@nxp.com>
+Signed-off-by: Alexandre Belloni <alexandre.belloni@bootlin.com>
+Link: https://lore.kernel.org/r/20250624-i3c-writesl-readsl-v3-3-63ccf0870f01@analog.com
+State: upstream (6e055b1fb2fc72ad937fc75ac109fe904ce56003)
+Message-ID: <20250925155006.3080413-6-manikanta.guntupalli@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/i3c/master/dw-i3c-master.c | 25 ++++---------------------
+ 1 file changed, 4 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/i3c/master/dw-i3c-master.c b/drivers/i3c/master/dw-i3c-master.c
+index dbcd3984f257..ea6beb6470a0 100644
+--- a/drivers/i3c/master/dw-i3c-master.c
++++ b/drivers/i3c/master/dw-i3c-master.c
+@@ -23,6 +23,7 @@
+ #include <linux/reset.h>
+ #include <linux/slab.h>
+ 
++#include "../internals.h"
+ #include "dw-i3c-master.h"
+ 
+ #define DEVICE_CTRL			0x0
+@@ -336,37 +337,19 @@ static int dw_i3c_master_get_free_pos(struct dw_i3c_master *master)
+ static void dw_i3c_master_wr_tx_fifo(struct dw_i3c_master *master,
+ 				     const u8 *bytes, int nbytes)
+ {
+-	writesl(master->regs + RX_TX_DATA_PORT, bytes, nbytes / 4);
+-	if (nbytes & 3) {
+-		u32 tmp = 0;
+-
+-		memcpy(&tmp, bytes + (nbytes & ~3), nbytes & 3);
+-		writesl(master->regs + RX_TX_DATA_PORT, &tmp, 1);
+-	}
+-}
+-
+-static void dw_i3c_master_read_fifo(struct dw_i3c_master *master,
+-				    int reg,  u8 *bytes, int nbytes)
+-{
+-	readsl(master->regs + reg, bytes, nbytes / 4);
+-	if (nbytes & 3) {
+-		u32 tmp;
+-
+-		readsl(master->regs + reg, &tmp, 1);
+-		memcpy(bytes + (nbytes & ~3), &tmp, nbytes & 3);
+-	}
++	i3c_writel_fifo(master->regs + RX_TX_DATA_PORT, bytes, nbytes);
+ }
+ 
+ static void dw_i3c_master_read_rx_fifo(struct dw_i3c_master *master,
+ 				       u8 *bytes, int nbytes)
+ {
+-	return dw_i3c_master_read_fifo(master, RX_TX_DATA_PORT, bytes, nbytes);
++	i3c_readl_fifo(master->regs + RX_TX_DATA_PORT, bytes, nbytes);
+ }
+ 
+ static void dw_i3c_master_read_ibi_fifo(struct dw_i3c_master *master,
+ 					u8 *bytes, int nbytes)
+ {
+-	return dw_i3c_master_read_fifo(master, IBI_QUEUE_STATUS, bytes, nbytes);
++	i3c_readl_fifo(master->regs + IBI_QUEUE_STATUS, bytes, nbytes);
+ }
+ 
+ static struct dw_i3c_xfer *
+-- 
+2.43.0
+

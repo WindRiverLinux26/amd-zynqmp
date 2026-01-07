@@ -1,0 +1,39 @@
+From ee9e7ce5c40cdc4736c3bd85e85d7fba7060afd6 Mon Sep 17 00:00:00 2001
+From: Asif Ikbal <asif.ikbal@amd.com>
+Date: Tue, 16 Sep 2025 11:55:39 +0530
+Subject: [PATCH 104/190] dt-bindings: media: xilinx: Add DT compatible strings
+
+commit 884d056f92511ce1e96bc5e43386d66cf421bdfc from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add missing DT compatible strings.
+
+Signed-off-by: Asif Ikbal <asif.ikbal@amd.com>
+Message-ID: <1758003942-3610046-2-git-send-email-asif.ikbal@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../bindings/media/xilinx/xlnx,v-vpss-scaler.yaml           | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.yaml b/Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.yaml
+index c83cbc59f8dc..7b77b3c99d77 100644
+--- a/Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.yaml
++++ b/Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.yaml
+@@ -16,7 +16,11 @@ description:
+ 
+ properties:
+   compatible:
+-    const: xlnx,v-vpss-scaler-1.0
++    items:
++      - enum:
++          - xlnx,v-vpss-scaler
++          - xlnx,v-vpss-scaler-1.0
++          - xlnx,v-vpss-scaler-2.2
+ 
+   reg:
+     maxItems: 1
+-- 
+2.43.0
+

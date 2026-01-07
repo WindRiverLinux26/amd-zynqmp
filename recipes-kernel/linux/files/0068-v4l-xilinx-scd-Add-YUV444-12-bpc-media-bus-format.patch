@@ -1,0 +1,36 @@
+From 3ac1814a36bf49cb3bb22c19ebf475406402c0a4 Mon Sep 17 00:00:00 2001
+From: Asif Ikbal <asif.ikbal@amd.com>
+Date: Mon, 25 Aug 2025 21:48:08 +0530
+Subject: [PATCH 068/190] v4l: xilinx: scd: Add YUV444 12 bpc media bus format
+
+commit 3770164157c54d3ff7b927c0d5ba56e0cee7d43d from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add media bus format support for YUV444 12 bits per component in
+streaming mode.
+
+Signed-off-by: Asif Ikbal <asif.ikbal@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1756138688-2715580-1-git-send-email-asif.ikbal@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/media/platform/xilinx/xilinx-scenechange-channel.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/platform/xilinx/xilinx-scenechange-channel.c b/drivers/media/platform/xilinx/xilinx-scenechange-channel.c
+index 34fcd8205a43..fc166df75c18 100644
+--- a/drivers/media/platform/xilinx/xilinx-scenechange-channel.c
++++ b/drivers/media/platform/xilinx/xilinx-scenechange-channel.c
+@@ -139,6 +139,7 @@ static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
+ 		break;
+ 	case MEDIA_BUS_FMT_VUY8_1X24:
+ 	case MEDIA_BUS_FMT_VUY10_1X30:
++	case MEDIA_BUS_FMT_VUY12_1X36:
+ 		vid_fmt = XSCD_VID_FMT_YUV_444;
+ 		break;
+ 	case MEDIA_BUS_FMT_RBG888_1X24:
+-- 
+2.43.0
+

@@ -1,0 +1,51 @@
+From 4d57d6c25b9a21f54b0f04ae43129a11a2b5261a Mon Sep 17 00:00:00 2001
+From: Akhil Raghu Menon <akhil.raghu.menon@amd.com>
+Date: Tue, 26 Aug 2025 16:29:54 -0700
+Subject: [PATCH 076/190] drm: xlnx: mmi-dc: Handle absence of PL audio clock
+
+commit e256fe38e8fc41a4bba63416af098c6627528eca from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The DC initialization should continue in absence of PL audio clock with
+a warning to the user. So, skip audio initialization if PL audio clock
+is not present.
+
+Signed-off-by: Akhil Raghu Menon <akhil.raghu.menon@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1756250994-1187002-1-git-send-email-akhil.raghu.menon@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/xlnx/mmi_dc.c | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc.c b/drivers/gpu/drm/xlnx/mmi_dc.c
+index 17a2508ad9aa..dd00affc693c 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc.c
++++ b/drivers/gpu/drm/xlnx/mmi_dc.c
+@@ -438,13 +438,14 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
+ 
+ 	/* Set the aud_clk and initialize the audio driver */
+ 	dc->aud_clk = devm_clk_get(dc->dev, "pl_aud_clk");
+-	if (IS_ERR(dc->aud_clk))
+-		return PTR_ERR(dc->aud_clk);
+-
+-	ret = mmi_dc_audio_init(dc);
+-	if (ret < 0) {
+-		dev_err(dc->dev, "failed to initialize Audio Driver: %d\n", ret);
+-		return ret;
++	if (IS_ERR(dc->aud_clk)) {
++		dev_warn(dc->dev, "PL audio clock is unavailable\n");
++	} else {
++		ret = mmi_dc_audio_init(dc);
++		if (ret < 0) {
++			dev_err(dc->dev, "failed to initialize Audio Driver: %d\n", ret);
++			return ret;
++		}
+ 	}
+ 
+ 	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
+-- 
+2.43.0
+

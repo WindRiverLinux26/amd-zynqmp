@@ -1,0 +1,80 @@
+From 6faba834975f98852e2636bd25d27f266737d899 Mon Sep 17 00:00:00 2001
+From: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Date: Fri, 12 Sep 2025 05:19:49 -0700
+Subject: [PATCH 100/190] firmware: xilinx: Release all peripheral devices from
+ firmware
+
+commit fec5646aba8de212c7629f7ff8224c416c40ecd8 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+During a kexec restart, only the kernel is reloaded while devices
+allocated in firmware persist, causing state mismatches between the
+kernel and firmware.
+
+Introduce PM_DEV_ALL_PERIPH node ID (0x18224FFF) to release all peripheral
+devices during kexec. On graceful restarts, this happens in
+zynqmp_firmware_shutdown(); on crash kernel restarts, it happens in
+zynqmp_firmware_probe() of the reloaded kernel.
+
+This support currently applies to Versal and Versal NET platforms only.
+
+Signed-off-by: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Acked-by: Senthil Nathan Thangaraj <senthilnathan.thangaraj@amd.com>
+Message-ID: <20250912121950.1104451-3-jay.buddhabhatti@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/firmware/xilinx/zynqmp-core.c | 14 +++++++++++++-
+ include/linux/firmware/xlnx-zynqmp.h  |  3 +++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/xilinx/zynqmp-core.c b/drivers/firmware/xilinx/zynqmp-core.c
+index a287f14be26a..3a6d3c477771 100644
+--- a/drivers/firmware/xilinx/zynqmp-core.c
++++ b/drivers/firmware/xilinx/zynqmp-core.c
+@@ -762,7 +762,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
+  * zynqmp_clear_pm_state() - Clear subsystem state.
+  * @dev: struct device
+  *
+- * Clears PM specific data in TF-A.
++ * Clears PM specific data in TF-A and firmware.
+  *
+  * Return: Returns status, either success or error+reason
+  */
+@@ -789,6 +789,18 @@ static int zynqmp_clear_pm_state(struct device *dev)
+ 					"Failed to clear TF-A specific subsystem state: %d\n", ret);
+ 		} else {
+ 			dev_warn(dev, "TF_A_CLEAR_PM_STATE is not supported in TF-A: %d\n", ret);
++		}
++
++		/* Check if the firmware supports the PM_DEV_ALL_PERIPH node ID */
++		ret = do_feature_check_call(PM_RELEASE_NODE);
++		if ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_3) {
++			/* Attempt to release all peripheral devices via firmware */
++			ret = zynqmp_pm_release_node(PM_DEV_ALL_PERIPH);
++			if (ret)
++				dev_err(dev, "Failed to release all peripheral devices: %d\n", ret);
++		} else {
++			dev_warn(dev,
++				 "Bulk device release is not supported by firmware: %d\n", ret);
+ 			ret = 0;
+ 		}
+ 	}
+diff --git a/include/linux/firmware/xlnx-zynqmp.h b/include/linux/firmware/xlnx-zynqmp.h
+index bde10bff9724..cf40af3c3594 100644
+--- a/include/linux/firmware/xlnx-zynqmp.h
++++ b/include/linux/firmware/xlnx-zynqmp.h
+@@ -109,6 +109,9 @@
+ #define SD_ITAPDLY	0xFF180314
+ #define SD_OTAPDLYSEL	0xFF180318
+ 
++/* Node ID for all peripheral devices */
++#define PM_DEV_ALL_PERIPH	0x18224FFFU
++
+ enum pm_module_id {
+ 	PM_MODULE_ID = 0x0,
+ 	XPM_MODULE_ID = 0x2,
+-- 
+2.43.0
+

@@ -1,0 +1,213 @@
+From 838ce49e0ba8979986da6d6fc926e1a89f062f40 Mon Sep 17 00:00:00 2001
+From: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Date: Wed, 20 Aug 2025 17:12:58 -0700
+Subject: [PATCH 044/190] drm/atomic-helper: Add select_output_bus_format
+ callback
+
+commit ee43f93d40a24e2ef2bcc013f642e9130a9d8248 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add optional drm_crtc_helper_funcs.select_output_bus_format callback. This
+callback allows to negotiate compatible media bus format on the link
+between CRTC and connected DRM encoder or DRM bridge chain. A good usage
+example is the CRTC implemented as FPGA soft IP. This kind of CRTC will
+most certainly support a single output media bus format, as supporting
+multiple runtime options consumes extra FPGA resources. A variety of
+options for the FPGA designs are usually achieved by synthesizing IP with
+different parameters.
+
+Add drm_helper_crtc_select_output_bus_format that wraps
+drm_crtc_helper_funcs.select_output_bus_format.
+
+Incorporate select_output_bus_format callback into the format negotiation
+stage to fix the input bus format of the first DRM bridge in the chain.
+
+Save negotiated output media bus format in &drm_crtc_state.
+
+Signed-off-by: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20250821001303.1178351-2-anatoliy.klymenko@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/drm_bridge.c             | 14 +++++++--
+ drivers/gpu/drm/drm_crtc_helper.c        | 38 ++++++++++++++++++++++++
+ include/drm/drm_crtc.h                   | 11 +++++++
+ include/drm/drm_crtc_helper.h            |  5 ++++
+ include/drm/drm_modeset_helper_vtables.h | 30 +++++++++++++++++++
+ 5 files changed, 96 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_bridge.c b/drivers/gpu/drm/drm_bridge.c
+index c6af46dd02bf..2c305ec53df3 100644
+--- a/drivers/gpu/drm/drm_bridge.c
++++ b/drivers/gpu/drm/drm_bridge.c
+@@ -28,6 +28,7 @@
+ 
+ #include <drm/drm_atomic_state_helper.h>
+ #include <drm/drm_bridge.h>
++#include <drm/drm_crtc_helper.h>
+ #include <drm/drm_debugfs.h>
+ #include <drm/drm_edid.h>
+ #include <drm/drm_encoder.h>
+@@ -862,7 +863,8 @@ static int select_bus_fmt_recursive(struct drm_bridge *first_bridge,
+ 	unsigned int i, num_in_bus_fmts = 0;
+ 	struct drm_bridge_state *cur_state;
+ 	struct drm_bridge *prev_bridge;
+-	u32 *in_bus_fmts;
++	struct drm_crtc *crtc = crtc_state->crtc;
++	u32 *in_bus_fmts, in_fmt;
+ 	int ret;
+ 
+ 	prev_bridge = drm_bridge_get_prev_bridge(cur_bridge);
+@@ -916,7 +918,15 @@ static int select_bus_fmt_recursive(struct drm_bridge *first_bridge,
+ 		return -ENOMEM;
+ 
+ 	if (first_bridge == cur_bridge) {
+-		cur_state->input_bus_cfg.format = in_bus_fmts[0];
++		in_fmt = drm_helper_crtc_select_output_bus_format(crtc,
++							crtc_state,
++							in_bus_fmts,
++							num_in_bus_fmts);
++		if (!in_fmt) {
++			kfree(in_bus_fmts);
++			return -ENOTSUPP;
++		}
++		cur_state->input_bus_cfg.format = in_fmt;
+ 		cur_state->output_bus_cfg.format = out_bus_fmt;
+ 		kfree(in_bus_fmts);
+ 		return 0;
+diff --git a/drivers/gpu/drm/drm_crtc_helper.c b/drivers/gpu/drm/drm_crtc_helper.c
+index 0955f1c385dd..62367ffc817f 100644
+--- a/drivers/gpu/drm/drm_crtc_helper.c
++++ b/drivers/gpu/drm/drm_crtc_helper.c
+@@ -1063,3 +1063,41 @@ int drm_helper_force_disable_all(struct drm_device *dev)
+ 	return ret;
+ }
+ EXPORT_SYMBOL(drm_helper_force_disable_all);
++
++/**
++ * drm_helper_crtc_select_output_bus_format - Select output media bus format
++ * @crtc: The CRTC to query
++ * @crtc_state: The new CRTC state
++ * @supported_fmts: List of media bus format options to pick from
++ * @num_supported_fmts: Number of media bus formats in @supported_fmts list
++ *
++ * Encoder drivers may call this helper to give the connected CRTC a chance to
++ * select compatible or preferred media bus format to use over the CRTC encoder
++ * link. Encoders should provide list of supported input MEDIA_BUS_FMT_* for
++ * CRTC to pick from. CRTC driver is expected to select preferred media bus
++ * format from the list and, once enabled, generate the signal accordingly.
++ *
++ * Returns:
++ * Selected preferred media bus format or 0 if CRTC does not support any from
++ * @supported_fmts list.
++ */
++u32 drm_helper_crtc_select_output_bus_format(struct drm_crtc *crtc,
++					     struct drm_crtc_state *crtc_state,
++					     const u32 *supported_fmts,
++					     unsigned int num_supported_fmts)
++{
++	if (!crtc || !crtc_state || !supported_fmts || !num_supported_fmts)
++		return 0;
++
++	if (!crtc->helper_private ||
++	    !crtc->helper_private->select_output_bus_format)
++		crtc_state->output_bus_format = supported_fmts[0];
++	else
++		crtc_state->output_bus_format =
++			crtc->helper_private->select_output_bus_format(crtc,
++							crtc_state,
++							supported_fmts,
++							num_supported_fmts);
++	return crtc_state->output_bus_format;
++}
++EXPORT_SYMBOL(drm_helper_crtc_select_output_bus_format);
+diff --git a/include/drm/drm_crtc.h b/include/drm/drm_crtc.h
+index 8b48a1974da3..cdaa27f50af7 100644
+--- a/include/drm/drm_crtc.h
++++ b/include/drm/drm_crtc.h
+@@ -317,6 +317,17 @@ struct drm_crtc_state {
+ 	 */
+ 	enum drm_scaling_filter scaling_filter;
+ 
++	/**
++	 * @output_bus_format:
++	 *
++	 * CRTC output media bus format of the video signal negotiated between
++	 * CRTC and encoder. This value should be one of MEDIA_BUS_FMT*
++	 * from uapi/linux/media-bus-format.h. It is safe to ignore
++	 * @output_bus_format if CRTC doesn't support multiple output bus format
++	 * options.
++	 */
++	u32 output_bus_format;
++
+ 	/**
+ 	 * @event:
+ 	 *
+diff --git a/include/drm/drm_crtc_helper.h b/include/drm/drm_crtc_helper.h
+index 8c886fc46ef2..b7eb52f3ce41 100644
+--- a/include/drm/drm_crtc_helper.h
++++ b/include/drm/drm_crtc_helper.h
+@@ -38,6 +38,7 @@
+ struct drm_atomic_state;
+ struct drm_connector;
+ struct drm_crtc;
++struct drm_crtc_state;
+ struct drm_device;
+ struct drm_display_mode;
+ struct drm_encoder;
+@@ -61,5 +62,9 @@ int drm_helper_connector_dpms(struct drm_connector *connector, int mode);
+ 
+ void drm_helper_resume_force_mode(struct drm_device *dev);
+ int drm_helper_force_disable_all(struct drm_device *dev);
++u32 drm_helper_crtc_select_output_bus_format(struct drm_crtc *crtc,
++					     struct drm_crtc_state *crtc_state,
++					     const u32 *supported_fmts,
++					     unsigned int num_supported_fmts);
+ 
+ #endif
+diff --git a/include/drm/drm_modeset_helper_vtables.h b/include/drm/drm_modeset_helper_vtables.h
+index ec59015aec3c..d1f910d505c6 100644
+--- a/include/drm/drm_modeset_helper_vtables.h
++++ b/include/drm/drm_modeset_helper_vtables.h
+@@ -490,6 +490,36 @@ struct drm_crtc_helper_funcs {
+ 				     bool in_vblank_irq, int *vpos, int *hpos,
+ 				     ktime_t *stime, ktime_t *etime,
+ 				     const struct drm_display_mode *mode);
++
++	/**
++	 * @select_output_bus_format:
++	 *
++	 * Called by the connected DRM encoder to negotiate input media bus
++	 * format. CRTC is expected to pick preferable media formats from the
++	 * list provided by the DRM encoder.
++	 *
++	 * This callback is optional.
++	 *
++	 * Parameters:
++	 *
++	 * crtc:
++	 *     The CRTC.
++	 * crcs_state:
++	 *     New CRTC state.
++	 * supported_fmts:
++	 *     List of input bus formats supported by the encoder.
++	 * num_supported_fmts:
++	 *     Number of formats in the list.
++	 *
++	 * Returns:
++	 *
++	 * Preferred bus format from the list or 0 if CRTC doesn't support any
++	 * from the provided list.
++	 */
++	u32 (*select_output_bus_format)(struct drm_crtc *crtc,
++					struct drm_crtc_state *crtc_state,
++					const u32 *supported_fmts,
++					unsigned int num_supported_fmts);
+ };
+ 
+ /**
+-- 
+2.43.0
+

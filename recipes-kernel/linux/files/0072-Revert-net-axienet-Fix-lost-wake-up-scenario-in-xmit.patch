@@ -1,0 +1,82 @@
+From 2b2bfddaaf6f8c9fd117cfaf4fb5112be373bde0 Mon Sep 17 00:00:00 2001
+From: Suraj Gupta <suraj.gupta2@amd.com>
+Date: Mon, 25 Aug 2025 20:56:10 +0530
+Subject: [PATCH 072/190] Revert "net: axienet: Fix lost wake-up scenario in
+ xmit"
+
+commit 9a9c674d9ccd102366be0886c342d64c1a575fb1 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Revert commit fc71e47023b4 ("net: axienet: Fix lost wake-up scenario in
+xmit") as Tx lost wakeup issue is already fixed in mainline commit
+bb193e3db8b8 ("net: axienet: fix for TX busy handling"). It checks for
+space in Tx queue after submitting transfer and checks again after
+stopping the queue to handle the case where context switching with Tx irq
+occurs after the first check and space becomes available in Tx queue.
+
+Signed-off-by: Suraj Gupta <suraj.gupta2@amd.com>
+Reviewed-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Message-ID: <20250825152610.195229-3-suraj.gupta2@amd.com>
+State: not-upstreamable
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/net/ethernet/xilinx/xilinx_axienet_main.c | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index 51208ae5c2d9..ed2cc4727fca 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -1915,7 +1915,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ #else
+ 	struct axidma_bd *cur_p;
+ #endif
+-	unsigned long flags;
+ 	struct axienet_dma_q *q;
+ 
+ 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
+@@ -1943,7 +1942,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ #else
+ 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
+ #endif
+-	spin_lock_irqsave(&q->tx_lock, flags);
+ 	if (axienet_check_tx_bd_space(q, num_frag + 1)) {
+ 		/* Should not happen as last start_xmit call should have
+ 		 * checked for sufficient space and queue should only be
+@@ -1957,7 +1955,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ 
+ #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+ 	if (axienet_skb_tstsmp(&skb, q, ndev)) {
+-		spin_unlock_irqrestore(&q->tx_lock, flags);
+ 		return NETDEV_TX_BUSY;
+ 	}
+ #endif
+@@ -2012,8 +2009,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ #else
+ 			desc_set_phys_addr(lp, phys, cur_p);
+ #endif
+-
+-			spin_unlock_irqrestore(&q->tx_lock, flags);
+ 			dev_err(&ndev->dev, "TX buffer map failed\n");
+ 			return NETDEV_TX_BUSY;
+ 		}
+@@ -2097,7 +2092,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
+ 		if (!axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1))
+ 			netif_wake_queue(ndev);
+ 	}
+-	spin_unlock_irqrestore(&q->tx_lock, flags);
+ 	return NETDEV_TX_OK;
+ }
+ 
+@@ -4193,7 +4187,6 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
+ 		netif_napi_add(ndev, &q->napi_tx, axienet_tx_poll);
+ 		netif_napi_add(ndev, &q->napi_rx, xaxienet_rx_poll);
+ 
+-		spin_lock_init(&q->tx_lock);
+ 	}
+ 
+ 	of_node_put(np);
+-- 
+2.43.0
+

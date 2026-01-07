@@ -1,0 +1,73 @@
+From 6441fadd6a2639a10c3a5702212360451c29192c Mon Sep 17 00:00:00 2001
+From: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Date: Thu, 14 Aug 2025 12:40:58 +0530
+Subject: [PATCH 042/190] net: macb: Add capability-based QBV detection and
+ Versal support
+
+commit cfb04460d3ba07dff2e76b53c92b9685e9e66431 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The 'exclude_qbv' bit in the designcfg_debug1 register varies across
+MACB/GEM IP revisions, making direct probing unreliable for detecting
+QBV support. This patch introduces a capability-based approach for
+consistent QBV feature identification across the IP family.
+
+Platform support updates:
+- Establish foundation for QBV detection in TAPRIO implementation
+- Enable MACB_CAPS_QBV for Xilinx Versal platform configuration
+- Fix capability line wrapping, ensuring code stays within 80 columns
+
+Signed-off-by: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Link: https://patch.msgid.link/20250814071058.3062453-3-vineeth.karumanchi@amd.com
+Signed-off-by: Paolo Abeni <pabeni@redhat.com>
+State: upstream (d739ce4bebf4)
+Message-ID: <20250818062319.3697455-3-vineeth.karumanchi@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/net/ethernet/cadence/macb.h      | 1 +
+ drivers/net/ethernet/cadence/macb_main.c | 9 +++++++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/cadence/macb.h b/drivers/net/ethernet/cadence/macb.h
+index 8a9bceb44a78..c38d2e91ed07 100644
+--- a/drivers/net/ethernet/cadence/macb.h
++++ b/drivers/net/ethernet/cadence/macb.h
+@@ -780,6 +780,7 @@
+ #define MACB_CAPS_MIIONRGMII			0x00000200
+ #define MACB_CAPS_NEED_TSUCLK			0x00000400
+ #define MACB_CAPS_QUEUE_DISABLE			0x00000800
++#define MACB_CAPS_QBV				0x00001000
+ #define MACB_CAPS_PCS				0x01000000
+ #define MACB_CAPS_HIGH_SPEED			0x02000000
+ #define MACB_CAPS_CLK_HW_CHG			0x04000000
+diff --git a/drivers/net/ethernet/cadence/macb_main.c b/drivers/net/ethernet/cadence/macb_main.c
+index 898895e9e616..0122963e1606 100644
+--- a/drivers/net/ethernet/cadence/macb_main.c
++++ b/drivers/net/ethernet/cadence/macb_main.c
+@@ -4505,6 +4505,10 @@ static int macb_init(struct platform_device *pdev)
+ 		dev->hw_features |= NETIF_F_HW_CSUM | NETIF_F_RXCSUM;
+ 	if (bp->caps & MACB_CAPS_SG_DISABLED)
+ 		dev->hw_features &= ~NETIF_F_SG;
++	/* Enable HW_TC if hardware supports QBV */
++	if (bp->caps & MACB_CAPS_QBV)
++		dev->hw_features |= NETIF_F_HW_TC;
++
+ 	dev->features = dev->hw_features;
+ 
+ 	/* Check RX Flow Filters support.
+@@ -5247,8 +5251,9 @@ static const struct macb_config sama7g5_emac_config = {
+ 
+ static const struct macb_config versal_config = {
+ 	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO |
+-		MACB_CAPS_GEM_HAS_PTP | MACB_CAPS_BD_RD_PREFETCH | MACB_CAPS_NEED_TSUCLK |
+-		MACB_CAPS_QUEUE_DISABLE,
++		MACB_CAPS_GEM_HAS_PTP | MACB_CAPS_BD_RD_PREFETCH |
++		MACB_CAPS_NEED_TSUCLK | MACB_CAPS_QUEUE_DISABLE |
++		MACB_CAPS_QBV,
+ 	.dma_burst_length = 16,
+ 	.clk_init = macb_clk_init,
+ 	.init = init_reset_optional,
+-- 
+2.43.0
+

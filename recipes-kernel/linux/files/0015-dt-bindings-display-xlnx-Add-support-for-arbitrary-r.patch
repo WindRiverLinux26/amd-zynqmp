@@ -1,0 +1,48 @@
+From 9ab99151eb1880c2e2364fe2c16ee0d9762bafb0 Mon Sep 17 00:00:00 2001
+From: Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+Date: Tue, 29 Jul 2025 11:30:23 +0530
+Subject: [PATCH 015/190] dt-bindings: display: xlnx: Add support for arbitrary
+ resolution mode
+
+commit a58159b9fa5f0545fda01059017f484fd5407fd9 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add a new property `xlnx,arbitrary-res-en` to the Xilinx Video
+Timing Controller (VTC) device tree binding to enables arbitrary
+resolution mode, allowing the VTC to support non-standard or
+user-defined resolutions.
+
+Signed-off-by: Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1753768825-449735-3-git-send-email-rajesh.gugulothu@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../devicetree/bindings/display/xlnx/xlnx,bridge-v-tc.yaml   | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/display/xlnx/xlnx,bridge-v-tc.yaml b/Documentation/devicetree/bindings/display/xlnx/xlnx,bridge-v-tc.yaml
+index e5e6090b82bb..b0a41f2a22c0 100644
+--- a/Documentation/devicetree/bindings/display/xlnx/xlnx,bridge-v-tc.yaml
++++ b/Documentation/devicetree/bindings/display/xlnx/xlnx,bridge-v-tc.yaml
+@@ -43,6 +43,10 @@ properties:
+     $ref: /schemas/types.yaml#/definitions/uint32
+     enum: [1, 2, 4]
+ 
++  xlnx,arbitrary-res-en:
++    description: Enable arbitrary resolution mode.
++    type: boolean
++
+ required:
+   - reg
+   - clocks
+@@ -59,4 +63,5 @@ examples:
+             clock-names = "s_axi_aclk", "clk";
+             clocks = <&misc_clk_0>, <&misc_clk_1>;
+             xlnx,pixels-per-clock = <2>;
++            xlnx,arbitrary-res-en;
+         };
+-- 
+2.43.0
+

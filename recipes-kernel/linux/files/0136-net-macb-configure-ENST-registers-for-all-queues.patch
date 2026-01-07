@@ -1,0 +1,121 @@
+From 6ae498fe8c23f9b91f950c670b5d68422d473454 Mon Sep 17 00:00:00 2001
+From: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Date: Tue, 30 Sep 2025 09:39:26 +0530
+Subject: [PATCH 136/190] net: macb: configure ENST registers for all queues
+
+commit b9b49c37c2444f74c7d7d605bdfda17592746f20 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The initial "tc" command was not overwriting the reset value of ENST
+registers if only a subset of queues were configured, leading to an
+invalid setup. To fix this, configure all queues unconditionally.
+Unconfigured queues are zero-initialized via kcalloc(), ensuring a
+complete and consistent configuration.
+
+The ENST queue configuration structure no longer stores a redundant
+queue_id field. Instead, the queue index is derived directly from the
+gate mask using order_base_2().
+
+Key changes:
+- Drop queue_id from struct macb_queue_enst_config
+- Allocate enst_queue[] based on bp->num_queues instead of
+  conf->num_entries
+- Index enst_queue[] directly with the queue number
+- Program ENST registers for all queues
+
+Fixes: e5aaca16b7b6 ("net: macb: Add TAPRIO traffic scheduling support")
+
+Signed-off-by: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Reviewed-by: Harini Katakam <harini.katakam@amd.com>
+Message-ID: <20250930040926.3839482-3-vineeth.karumanchi@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/net/ethernet/cadence/macb.h      |  2 --
+ drivers/net/ethernet/cadence/macb_main.c | 21 ++++++++++-----------
+ 2 files changed, 10 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/net/ethernet/cadence/macb.h b/drivers/net/ethernet/cadence/macb.h
+index e2d2b75eca06..d01d60934378 100644
+--- a/drivers/net/ethernet/cadence/macb.h
++++ b/drivers/net/ethernet/cadence/macb.h
+@@ -1471,7 +1471,6 @@ struct macb_platform_data {
+  * @start_time_mask:  Bitmask representing the start time for the queue
+  * @on_time_bytes:    "on" time nsec expressed in bytes
+  * @off_time_bytes:   "off" time nsec expressed in bytes
+- * @queue_id:         Identifier for the queue
+  *
+  * This structure holds the configuration parameters for an ENST queue,
+  * used to control time-based transmission scheduling in the MACB driver.
+@@ -1480,7 +1479,6 @@ struct macb_queue_enst_config {
+ 	u32 start_time_mask;
+ 	u32 on_time_bytes;
+ 	u32 off_time_bytes;
+-	u8 queue_id;
+ };
+ 
+ #endif /* _MACB_H */
+diff --git a/drivers/net/ethernet/cadence/macb_main.c b/drivers/net/ethernet/cadence/macb_main.c
+index 2ba94499bc78..41101f1ec33c 100644
+--- a/drivers/net/ethernet/cadence/macb_main.c
++++ b/drivers/net/ethernet/cadence/macb_main.c
+@@ -4010,7 +4010,7 @@ static int macb_taprio_setup_replace(struct net_device *ndev,
+ 	struct macb *bp = netdev_priv(ndev);
+ 	struct ethtool_link_ksettings kset;
+ 	struct macb_queue *queue;
+-	size_t i;
++	size_t i, q;
+ 	int err;
+ 
+ 	if (conf->num_entries > bp->num_queues) {
+@@ -4038,7 +4038,7 @@ static int macb_taprio_setup_replace(struct net_device *ndev,
+ 		return -EINVAL;
+ 	}
+ 
+-	enst_queue = kcalloc(conf->num_entries, sizeof(*enst_queue), GFP_KERNEL);
++	enst_queue = kcalloc(bp->num_queues, sizeof(*enst_queue), GFP_KERNEL);
+ 	if (unlikely(!enst_queue))
+ 		return -ENOMEM;
+ 
+@@ -4096,13 +4096,13 @@ static int macb_taprio_setup_replace(struct net_device *ndev,
+ 			goto cleanup;
+ 		}
+ 
+-		enst_queue[i].queue_id = order_base_2(entry->gate_mask);
+-		enst_queue[i].start_time_mask =
++		q = order_base_2(entry->gate_mask);
++		enst_queue[q].start_time_mask =
+ 			(start_time_sec << GEM_START_TIME_SEC_OFFSET) |
+ 			start_time_nsec;
+-		enst_queue[i].on_time_bytes =
++		enst_queue[q].on_time_bytes =
+ 			enst_ns_to_hw_units(entry->interval, speed);
+-		enst_queue[i].off_time_bytes =
++		enst_queue[q].off_time_bytes =
+ 			enst_ns_to_hw_units(conf->cycle_time - entry->interval, speed);
+ 
+ 		configured_queues |= entry->gate_mask;
+@@ -4127,15 +4127,14 @@ static int macb_taprio_setup_replace(struct net_device *ndev,
+ 		gem_writel(bp, ENST_CONTROL,
+ 			   bp->queue_mask << GEM_ENST_DISABLE_QUEUE_OFFSET);
+ 
+-		for (i = 0; i < conf->num_entries; i++) {
+-			queue = &bp->queues[enst_queue[i].queue_id];
++		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
+ 			/* Configure queue timing registers */
+ 			queue_writel(queue, ENST_START_TIME,
+-				     enst_queue[i].start_time_mask);
++				     enst_queue[q].start_time_mask);
+ 			queue_writel(queue, ENST_ON_TIME,
+-				     enst_queue[i].on_time_bytes);
++				     enst_queue[q].on_time_bytes);
+ 			queue_writel(queue, ENST_OFF_TIME,
+-				     enst_queue[i].off_time_bytes);
++				     enst_queue[q].off_time_bytes);
+ 		}
+ 
+ 		/* Enable ENST for all configured queues in one write */
+-- 
+2.43.0
+

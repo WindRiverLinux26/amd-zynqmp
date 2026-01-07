@@ -1,0 +1,59 @@
+From 2e4dce89bd5b604f765e76b96153ca576d35b35f Mon Sep 17 00:00:00 2001
+From: Abin Joseph <abin.joseph@amd.com>
+Date: Mon, 25 Aug 2025 18:34:23 +0530
+Subject: [PATCH 078/190] dt-bindings: dmaengine: xilinx_dma: Remove DMA client
+ properties
+
+commit 6564687eab2603eef697c275e8eecf6314be6936 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Remove DMA client section mentioned in the dt-bindings as it is
+not required to document client bindings in dmaengine bindings.
+
+Signed-off-by: Abin Joseph <abin.joseph@amd.com>
+Signed-off-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Acked-by: Rob Herring <robh@kernel.org>
+Signed-off-by: Abin Joseph <abin.joseph@amd.com>
+Link: https://lore.kernel.org/r/20250825130423.5739-1-abin.joseph@amd.com
+Signed-off-by: Vinod Koul <vkoul@kernel.org>
+State: upstream (d5df661c9c76cb36d90527349ac6197a4baf2aba)
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../bindings/dma/xilinx/xilinx_dma.txt        | 23 -------------------
+ 1 file changed, 23 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/dma/xilinx/xilinx_dma.txt b/Documentation/devicetree/bindings/dma/xilinx/xilinx_dma.txt
+index 590d1948f202..b567107270cb 100644
+--- a/Documentation/devicetree/bindings/dma/xilinx/xilinx_dma.txt
++++ b/Documentation/devicetree/bindings/dma/xilinx/xilinx_dma.txt
+@@ -109,26 +109,3 @@ axi_vdma_0: axivdma@40030000 {
+ 		xlnx,datawidth = <0x40>;
+ 	} ;
+ } ;
+-
+-
+-* DMA client
+-
+-Required properties:
+-- dmas: a list of <[Video DMA device phandle] [Channel ID]> pairs,
+-	where Channel ID is '0' for write/tx and '1' for read/rx
+-	channel. For MCMDA, MM2S channel(write/tx) ID start from
+-	'0' and is in [0-15] range. S2MM channel(read/rx) ID start
+-	from '16' and is in [16-31] range. These channels ID are
+-	fixed irrespective of IP configuration.
+-
+-- dma-names: a list of DMA channel names, one per "dmas" entry
+-
+-Example:
+-++++++++
+-
+-vdmatest_0: vdmatest@0 {
+-	compatible ="xlnx,axi-vdma-test-1.00.a";
+-	dmas = <&axi_vdma_0 0
+-		&axi_vdma_0 1>;
+-	dma-names = "vdma0", "vdma1";
+-} ;
+-- 
+2.43.0
+

@@ -1,0 +1,139 @@
+From 3a5003e62e4b08e275bcf5e78c0d895a3ca9b072 Mon Sep 17 00:00:00 2001
+From: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Date: Wed, 5 Nov 2025 18:53:30 +0530
+Subject: [PATCH 186/190] usb: dwc3: xilinx: add MMI USB IP coherent support
+
+commit dab8947806b466606fda118ef5fdf6e96aaef363 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+By default both descriptor and data RxDMAs are configured to use
+non-posted commands. For a given BI, descriptor/event RxDMA won't
+be issued until the previous issued data RxDMA is completed on the
+bus.
+
+With CMN early ACK disabled this leads to performance drop. To fix it
+the solution is use posted commands and use dma-coherent path. Provide
+swnode based implementation to program global BMU control register and
+disable AXI store order enable bit.
+
+It also fixes cache override settings for descriptor read/write request
+and it should not be cached/buffered. Ideally cache override fix should
+apply to all platforms but is limited due to the late release cycle.
+
+Signed-off-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Message-ID: <20251105132330.594797-2-radhey.shyam.pandey@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/usb/dwc3/core.c        | 12 ++++++++++++
+ drivers/usb/dwc3/core.h        |  6 ++++++
+ drivers/usb/dwc3/dwc3-xilinx.c | 14 ++++++++++++--
+ 3 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index 1ba0abc37219..2e82eb542ccd 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -757,6 +757,15 @@ static void dwc3_config_soc_bus(struct dwc3 *dwc)
+ 		reg |= DWC3_LCSR_TX_DEEMPH_MASK(dwc->csr_tx_deemph_field_1);
+ 		dwc3_writel(dwc->regs, DWC3_LCSR_TX_DEEMPH, reg);
+ 	}
++
++	if (dwc->dis_axi_storder_en) {
++		u32 reg;
++
++		reg = dwc3_readl(dwc->regs, DWC3_GBMUCTL);
++		reg &= ~DWC3_GBMUCTL_DIS_AXI_STORDER_EN_MASK;
++		dwc3_writel(dwc->regs, DWC3_GBMUCTL, reg);
++		dev_info(dwc->dev, "Disable GBMUCTL axi_storder_en\n");
++	}
+ }
+ 
+ static int dwc3_core_ulpi_init(struct dwc3 *dwc)
+@@ -1827,6 +1836,9 @@ static void dwc3_get_software_properties(struct dwc3 *dwc)
+ 					       &csr_tx_deemph_field_1);
+ 		if (!ret)
+ 			dwc->csr_tx_deemph_field_1 = csr_tx_deemph_field_1;
++
++		if (device_property_read_bool(tmpdev, "snps,dis_axi_storder_en"))
++			dwc->dis_axi_storder_en = true;
+ 	}
+ }
+ 
+diff --git a/drivers/usb/dwc3/core.h b/drivers/usb/dwc3/core.h
+index c8869e73181a..d28fa674bdb7 100644
+--- a/drivers/usb/dwc3/core.h
++++ b/drivers/usb/dwc3/core.h
+@@ -183,6 +183,7 @@
+ #define DWC3_LLUCTL		0xd024
+ 
+ #define DWC3_LCSR_TX_DEEMPH	0xd060
++#define DWC3_GBMUCTL		0xc164
+ /* Bit fields */
+ 
+ /* Global Status Register */
+@@ -207,6 +208,9 @@
+ #define DWC3_LCSR_TX_DEEMPH_MASK(n)		((n) & 0x3ffff)
+ #define DWC3_LCSR_TX_DEEMPH_UNSPECIFIED		0xffffffff
+ 
++/* GBMUCTL Register: disable DWC_USB31_AXI_STRICT_ORDER_EN */
++#define DWC3_GBMUCTL_DIS_AXI_STORDER_EN_MASK	BIT(2)
++
+ /* Global Debug LSP MUX Select */
+ #define DWC3_GDBGLSPMUX_ENDBC		BIT(15)	/* Host only */
+ #define DWC3_GDBGLSPMUX_HOSTSELECT(n)	((n) & 0x3fff)
+@@ -1196,6 +1200,7 @@ struct dwc3_scratchpad_array {
+  *			 function wakeup in bitmap format where bit position
+  *			 represents interface_id.
+  * @csr_tx_deemph_field_1: stores TX deemphasis used in Gen2 operation.
++ * @dis_axi_storder_en: disables AXI strict order enable bit.
+  * @is_d3: set if the controller is in d3 state
+  * @saved_regs: registers to be saved/restored during hibernation/wakeup events
+  * @irq_wakeup: wakeup IRQ number, triggered when host asks to wakeup from
+@@ -1442,6 +1447,7 @@ struct dwc3 {
+ 	u32			gsbuscfg0_reqinfo;
+ 	u32			wakeup_pending_funcs;
+ 	u32			csr_tx_deemph_field_1;
++	bool			dis_axi_storder_en;
+ 	bool			is_d3;
+ 	u32			*saved_regs;
+ 	u32			irq_wakeup;
+diff --git a/drivers/usb/dwc3/dwc3-xilinx.c b/drivers/usb/dwc3/dwc3-xilinx.c
+index 844e19655550..74f69842adf0 100644
+--- a/drivers/usb/dwc3/dwc3-xilinx.c
++++ b/drivers/usb/dwc3/dwc3-xilinx.c
+@@ -690,7 +690,7 @@ MODULE_DEVICE_TABLE(of, dwc3_xlnx_of_match);
+ static int dwc3_set_swnode(struct device *dev)
+ {
+ 	struct device_node *np = dev->of_node, *dwc3_np;
+-	struct property_entry props[2];
++	struct property_entry props[4];
+ 	int prop_idx = 0, ret = 0;
+ 
+ 	dwc3_np = of_get_compatible_child(np, "snps,dwc3");
+@@ -704,10 +704,20 @@ static int dwc3_set_swnode(struct device *dev)
+ 	if (of_dma_is_coherent(dwc3_np))
+ 		props[prop_idx++] = PROPERTY_ENTRY_U16("snps,gsbuscfg0-reqinfo",
+ 						       0xffff);
+-	if (of_device_is_compatible(np, "xlnx,versal2-mmi-dwc3"))
++
++	if (of_device_is_compatible(np, "xlnx,versal2-mmi-dwc3")) {
++		/* Override Global bus config reg cache settings for MMI USB */
++		prop_idx = 0;
++		if (of_dma_is_coherent(dwc3_np))
++			props[prop_idx++] = PROPERTY_ENTRY_U16("snps,gsbuscfg0-reqinfo",
++							       0xf0f0);
++
+ 		props[prop_idx++] = PROPERTY_ENTRY_U32("snps,lcsr_tx_deemph",
+ 						       XLNX_MMI_USB_TX_DEEMPH_DEF);
+ 
++		props[prop_idx++] = PROPERTY_ENTRY_BOOL("snps,dis_axi_storder_en");
++	}
++
+ 	of_node_put(dwc3_np);
+ 
+ 	if (prop_idx)
+-- 
+2.43.0
+

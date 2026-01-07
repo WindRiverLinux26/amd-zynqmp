@@ -1,0 +1,80 @@
+From 4ff684f283f58207c75c5e88156db4cb056c52de Mon Sep 17 00:00:00 2001
+From: Michal Simek <michal.simek@amd.com>
+Date: Wed, 3 Sep 2025 14:36:28 +0200
+Subject: [PATCH 132/190] arm64: versal: Describe L2/L3 caches
+
+commit d27cdf6702f4f11690b7f711e50b18d54704c3ae from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add missing cache subsystem description.
+
+Signed-off-by: Michal Simek <michal.simek@amd.com>
+Message-ID: <c768f5283644c28123728afba15089717adacc3c.1756902978.git.michal.simek@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ arch/arm64/boot/dts/xilinx/versal.dtsi | 33 ++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/xilinx/versal.dtsi b/arch/arm64/boot/dts/xilinx/versal.dtsi
+index 8740d35fb8ba..1303ec916206 100644
+--- a/arch/arm64/boot/dts/xilinx/versal.dtsi
++++ b/arch/arm64/boot/dts/xilinx/versal.dtsi
+@@ -33,6 +33,17 @@ cpu0: cpu@0 {
+ 			operating-points-v2 = <&cpu_opp_table>;
+ 			reg = <0>;
+ 			cpu-idle-states = <&CPU_SLEEP_0>;
++			d-cache-size = <0x8000>; /* 32kB */
++			d-cache-line-size = <64>;
++			/* 2 ways set associativity */
++			/* cache_size / (line_size / associativity) */
++			d-cache-sets = <256>;
++			i-cache-size = <0xc000>; /* 48kB */
++			i-cache-line-size = <64>;
++			/* 3 ways set associativity */
++			/* cache_size / (line_size / associativity) */
++			i-cache-sets = <256>;
++			next-level-cache = <&l2>;
+ 		};
+ 
+ 		cpu1: cpu@1 {
+@@ -42,6 +53,17 @@ cpu1: cpu@1 {
+ 			operating-points-v2 = <&cpu_opp_table>;
+ 			reg = <1>;
+ 			cpu-idle-states = <&CPU_SLEEP_0>;
++			d-cache-size = <0x8000>; /* 32kB */
++			d-cache-line-size = <64>;
++			/* 2 ways set associativity */
++			/* cache_size / (line_size / associativity) */
++			d-cache-sets = <256>;
++			i-cache-size = <0xc000>; /* 48kB */
++			i-cache-line-size = <64>;
++			/* 3 ways set associativity */
++			/* cache_size / (line_size / associativity) */
++			i-cache-sets = <256>;
++			next-level-cache = <&l2>;
+ 		};
+ 
+ 		idle-states {
+@@ -58,6 +80,17 @@ CPU_SLEEP_0: cpu-sleep-0 {
+ 		};
+ 	};
+ 
++	l2: l2-cache {
++		compatible = "cache";
++		cache-level = <2>;
++		cache-size = <0x100000>; /* 1 MB */
++		cache-line-size = <64>;
++		/* 4 ways set associativity */
++		/* cache_size / (line_size / associativity) */
++		cache-sets = <4096>;
++		cache-unified;
++	};
++
+ 	cpu_opp_table: opp-table-cpu {
+ 		compatible = "operating-points-v2";
+ 		opp-shared;
+-- 
+2.43.0
+

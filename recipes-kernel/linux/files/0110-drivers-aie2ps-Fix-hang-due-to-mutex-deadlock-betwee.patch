@@ -1,0 +1,69 @@
+From e68882104d64c3567e0121fa9a200e8e9eee96ed Mon Sep 17 00:00:00 2001
+From: Dhananjay Chauhan <dhananjay.chauhan@amd.com>
+Date: Tue, 16 Sep 2025 02:02:18 -0700
+Subject: [PATCH 110/190] drivers: aie2ps: Fix hang due to mutex deadlock
+ between ISR and part init
+
+commit b3f1ec2cccbb9782310456d6595123366d80ef77 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The aie2ps driver can hang due to a deadlock on the shared mutex
+'apart->mlock'. The interrupt handler aie2ps_interrupt_user_event1()
+and the initialization function aie2ps_part_initialize() both use
+this same mutex.
+
+When the user_event1 interrupt signals inference completion, the
+interrupt handler acquires the mutex and waits for a callback to
+complete the aiarm call. If aie2ps_part_initialize() is invoked
+during this waiting period, it attempts to acquire the same mutex,
+leading to a deadlock and kernel hang.
+
+Fix this by releasing the mutex before calling user_event1_complete(),
+which allows the init part to proceed and prevents the hang.
+
+Additionally, the no longer required aperture mutex locking has been
+removed.
+
+Signed-off-by: Dhananjay Chauhan <dhananjay.chauhan@amd.com>
+Acked-by: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Message-ID: <20250916090218.2750911-1-dhananjay.chauhan@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/misc/xilinx-ai-engine/ai-engine-interrupt.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-interrupt.c b/drivers/misc/xilinx-ai-engine/ai-engine-interrupt.c
+index ca2e56e760c3..aca5ac3771a5 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-interrupt.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-interrupt.c
+@@ -1184,7 +1184,6 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
+ 	int end_col;
+ 
+ 	aperture = apart->aperture;
+-	mutex_lock(&aperture->mlock);
+ 	mutex_lock(&apart->mlock);
+ 	if (!apart->status) {
+ 		dev_err_ratelimited(&apart->dev, "USER_EVENT1 ISR: apart not active");
+@@ -1225,14 +1224,16 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
+ 		aie_clear_event_status(apart, &loc, AIE_PL_MOD,
+ 				       event_mod->user_event1);
+ 	}
++	mutex_unlock(&apart->mlock);
+ 	if (complete && apart->user_event1_complete)
+ 		apart->user_event1_complete(apart->partition_id, apart->user_event1_priv);
+ 	loc.col = apart->range.start.col + 1;
+ 	loc.row = 0;
+ 	aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
++
++	return complete ? IRQ_HANDLED : IRQ_NONE;
+ out:
+ 	mutex_unlock(&apart->mlock);
+-	mutex_unlock(&aperture->mlock);
+ 	return complete ? IRQ_HANDLED : IRQ_NONE;
+ }
+ 
+-- 
+2.43.0
+

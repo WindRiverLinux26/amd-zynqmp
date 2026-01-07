@@ -1,0 +1,44 @@
+From f5168bbde28f8d72ecf377da0fc90d9804c5adff Mon Sep 17 00:00:00 2001
+From: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Date: Tue, 30 Sep 2025 09:39:25 +0530
+Subject: [PATCH 135/190] net: macb: remove unused enst Q0/Q1 time register
+ defines
+
+commit f62824dca48192d61f7ff6d17bae8ed440fd21f0 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The ENST start/on/off time register definitions for Q0 and Q1 are not
+referenced anywhere in the driver. The driver calculates these register
+addresses from the ENST base offset and the queue index instead of using
+fixed defines, removing the unused macros.
+
+Signed-off-by: Vineeth Karumanchi <vineeth.karumanchi@amd.com>
+Reviewed-by: Harini Katakam <harini.katakam@amd.com>
+Message-ID: <20250930040926.3839482-2-vineeth.karumanchi@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/net/ethernet/cadence/macb.h | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/drivers/net/ethernet/cadence/macb.h b/drivers/net/ethernet/cadence/macb.h
+index 8ee7c238cc79..e2d2b75eca06 100644
+--- a/drivers/net/ethernet/cadence/macb.h
++++ b/drivers/net/ethernet/cadence/macb.h
+@@ -184,12 +184,6 @@
+ #define GEM_DCFG8		0x029C /* Design Config 8 */
+ #define GEM_DCFG10		0x02A4 /* Design Config 10 */
+ #define GEM_DCFG12		0x02AC /* Design Config 12 */
+-#define GEM_ENST_START_TIME_Q0	0x0800 /* ENST Q0 start time */
+-#define GEM_ENST_START_TIME_Q1	0x0804 /* ENST Q1 start time */
+-#define GEM_ENST_ON_TIME_Q0	0x0820 /* ENST Q0 on time */
+-#define GEM_ENST_ON_TIME_Q1	0x0824 /* ENST Q1 on time */
+-#define GEM_ENST_OFF_TIME_Q0	0x0840 /* ENST Q0 off time */
+-#define GEM_ENST_OFF_TIME_Q1	0x0844 /* ENST Q1 off time */
+ #define GEM_ENST_CONTROL	0x0880 /* ENST control register */
+ #define GEM_USX_CONTROL		0x0A80 /* High speed PCS control register */
+ #define GEM_USX_STATUS		0x0A88 /* High speed PCS status register */
+-- 
+2.43.0
+

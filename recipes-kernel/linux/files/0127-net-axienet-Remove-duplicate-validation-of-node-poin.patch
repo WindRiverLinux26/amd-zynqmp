@@ -1,0 +1,52 @@
+From 66fe8dea379bd80425cd9a6efb9e48d4902048fd Mon Sep 17 00:00:00 2001
+From: Suraj Gupta <suraj.gupta2@amd.com>
+Date: Wed, 17 Sep 2025 12:46:12 +0530
+Subject: [PATCH 127/190] net: axienet: Remove duplicate validation of node
+ pointer
+
+commit c4c7879755c68f862aa4c6f7005c5e7760a096ca from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Remove duplicate check while validating pcs/phy phandle node pointer.
+
+This change fixes below check:
+ CHECK   drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+     drivers/net/ethernet/xilinx/xilinx_axienet_main.c:5474 axienet_probe()
+ warn: duplicate check 'np' (previous on line 5469)
+
+Signed-off-by: Suraj Gupta <suraj.gupta2@amd.com>
+Fixes: b888c996dc3f ("net: axienet: added multichannel DMA support")
+Reviewed-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Message-ID: <20250917071612.186380-3-suraj.gupta2@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/net/ethernet/xilinx/xilinx_axienet_main.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+index d2567fb35b7e..375ccecea6db 100644
+--- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
++++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
+@@ -5748,12 +5748,11 @@ static int axienet_probe(struct platform_device *pdev)
+ 			ret = -EINVAL;
+ 			goto cleanup_mdio;
+ 		}
+-		if (np) {
+-			ret = axienet_mdio_setup(lp);
+-			if (ret)
+-				dev_warn(&pdev->dev,
+-					 "error registering MDIO bus: %d\n", ret);
+-		}
++
++		ret = axienet_mdio_setup(lp);
++		if (ret)
++			dev_warn(&pdev->dev,
++				 "error registering MDIO bus: %d\n", ret);
+ 
+ 		lp->pcs_phy = of_mdio_find_device(np);
+ 		if (!lp->pcs_phy) {
+-- 
+2.43.0
+

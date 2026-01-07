@@ -1,0 +1,264 @@
+From 4ce6246831c1e51ec712eab055db122514f58a4d Mon Sep 17 00:00:00 2001
+From: Anish Kadamathikuttiyil Karthikeyan Pillai
+ <anish.kadamathikuttiyil-karthikeyan-pillai@amd.com>
+Date: Wed, 10 Sep 2025 13:20:34 +0100
+Subject: [PATCH 090/190] iio: adc: versal-sysmon: Support AI Engine thermal
+ monitoring
+
+commit 928d12cedef0d4279f5749083579e5b0b9f16e63 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+To enhance the thermal monitoring of AI Engine, the sysmon satellites
+close to it are exposed as IIO channels.
+
+Signed-off-by: Anish Kadamathikuttiyil Karthikeyan Pillai <anish.kadamathikuttiyil-karthikeyan-pillai@amd.com>
+Message-ID: <20250910122035.2046921-4-anish.kadamathikuttiyil-karthikeyan-pillai@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/iio/adc/versal-sysmon-core.c | 142 ++++++++++++++++++---------
+ drivers/iio/adc/versal-sysmon.h      |   6 +-
+ 2 files changed, 99 insertions(+), 49 deletions(-)
+
+diff --git a/drivers/iio/adc/versal-sysmon-core.c b/drivers/iio/adc/versal-sysmon-core.c
+index ef264cab82e2..231699c2086e 100644
+--- a/drivers/iio/adc/versal-sysmon-core.c
++++ b/drivers/iio/adc/versal-sysmon-core.c
+@@ -3,7 +3,7 @@
+  * Xilinx SYSMON for Versal
+  *
+  * Copyright (C) 2019 - 2022, Xilinx, Inc.
+- * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
++ * Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
+  *
+  * Description:
+  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
+@@ -273,7 +273,10 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
+ 	case IIO_CHAN_INFO_RAW:
+ 		switch (chan->type) {
+ 		case IIO_TEMP:
+-			offset = sysmon_temp_offset(chan->address);
++			if (chan->channel != AIE_TEMP_CH)
++				offset = sysmon_temp_offset(chan->address);
++			else
++				offset = chan->address;
+ 			*val = sysmon->temp_read(sysmon, offset);
+ 			*val2 = 0;
+ 			ret = IIO_VAL_INT;
+@@ -296,7 +299,10 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
+ 		switch (chan->type) {
+ 		case IIO_TEMP:
+ 			/* In Deg C */
+-			offset = sysmon_temp_offset(chan->address);
++			if (chan->channel != AIE_TEMP_CH)
++				offset = sysmon_temp_offset(chan->address);
++			else
++				offset = chan->address;
+ 			regval = sysmon->temp_read(sysmon, offset);
+ 			if (!sysmon->hbm_slr)
+ 				sysmon_q8p7_to_millicelsius(regval, val, val2);
+@@ -1205,8 +1211,10 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
+ 	struct iio_chan_spec *sysmon_channels;
+ 	struct device_node *child_node = NULL, *np = dev->of_node;
+ 	int ret, i = 0;
++	int aie_idx = 0;
+ 	u8 num_supply_chan = 0;
+ 	u32 reg = 0, num_temp_chan = 0;
++	u32 num_aie_temp_chan = 0;
+ 	const char *name;
+ 	u32 chan_size = sizeof(struct iio_chan_spec);
+ 	u32 temp_chan_size;
+@@ -1218,6 +1226,12 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
+ 
+ 	sysmon->num_supply_chan = num_supply_chan;
+ 
++	for_each_child_of_node(np, child_node)
++		if (of_property_present(child_node, "xlnx,aie-temp"))
++			num_aie_temp_chan++;
++
++	sysmon->num_aie_temp_chan = num_aie_temp_chan;
++
+ 	INIT_LIST_HEAD(&sysmon->region_list);
+ 
+ 	if (sysmon->irq > 0)
+@@ -1237,66 +1251,100 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
+ 
+ 	sysmon_channels = devm_kzalloc(dev,
+ 				       (chan_size * num_supply_chan) +
+-				       temp_chan_size, GFP_KERNEL);
++				       (chan_size * num_aie_temp_chan) + temp_chan_size,
++				       GFP_KERNEL);
++	if (!sysmon_channels)
++		return -ENOMEM;
+ 
++	/* Configure the dynamic channels */
+ 	for_each_child_of_node(np, child_node) {
+-		ret = of_property_read_u32(child_node, "reg", &reg);
+-		if (ret < 0) {
+-			of_node_put(child_node);
+-			return ret;
+-		}
++		if (of_property_present(child_node, "xlnx,aie-temp")) {
++			ret = of_property_read_u32(child_node, "reg", &reg);
++			if (ret < 0) {
++				of_node_put(child_node);
++				return ret;
++			}
++			ret = of_property_read_string(child_node, "xlnx,name", &name);
++			if (ret < 0) {
++				of_node_put(child_node);
++				return ret;
++			}
++			sysmon_channels[num_supply_chan + aie_idx].type = IIO_TEMP;
++			sysmon_channels[num_supply_chan + aie_idx].indexed = 1;
++			sysmon_channels[num_supply_chan + aie_idx].address =
++				SYSMON_NODE_OFFSET + ((reg - 1) * 4);
++			sysmon_channels[num_supply_chan + aie_idx].channel = AIE_TEMP_CH;
++			sysmon_channels[num_supply_chan + aie_idx].info_mask_separate =
++				BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
++			sysmon_channels[num_supply_chan + aie_idx].scan_index = aie_idx;
++			sysmon_channels[num_supply_chan + aie_idx].scan_type.realbits = 15;
++			sysmon_channels[num_supply_chan + aie_idx].scan_type.storagebits =
++				16;
++			sysmon_channels[num_supply_chan + aie_idx].scan_type.endianness =
++				IIO_CPU;
++			sysmon_channels[num_supply_chan + aie_idx].scan_type.sign = 's';
++			sysmon_channels[num_supply_chan + aie_idx].extend_name = name;
++			sysmon_channels[num_supply_chan + aie_idx].datasheet_name = name;
++			aie_idx++;
++		} else {
++			ret = of_property_read_u32(child_node, "reg", &reg);
++			if (ret < 0) {
++				of_node_put(child_node);
++				return ret;
++			}
+ 
+-		ret = of_property_read_string(child_node, "xlnx,name", &name);
+-		if (ret < 0) {
+-			of_node_put(child_node);
+-			return ret;
+-		}
++			ret = of_property_read_string(child_node, "xlnx,name", &name);
++			if (ret < 0) {
++				of_node_put(child_node);
++				return ret;
++			}
+ 
+-		sysmon_channels[i].type = IIO_VOLTAGE;
+-		sysmon_channels[i].indexed = 1;
+-		sysmon_channels[i].address = reg;
+-		sysmon_channels[i].channel = reg;
+-		sysmon_channels[i].info_mask_separate =
+-			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
+-		sysmon_channels[i].info_mask_shared_by_type =
+-			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
+-		sysmon_channels[i].info_mask_shared_by_type_available =
+-			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
+-
+-		sysmon_channels[i].event_spec = sysmon_supply_events;
+-		sysmon_channels[i].num_event_specs = ARRAY_SIZE(sysmon_supply_events);
+-
+-		sysmon_channels[i].scan_index = i;
+-		sysmon_channels[i].scan_type.realbits = 19;
+-		sysmon_channels[i].scan_type.storagebits = 32;
+-
+-		sysmon_channels[i].scan_type.endianness = IIO_CPU;
+-		sysmon_channels[i].extend_name = name;
+-
+-		if (of_property_read_bool(child_node, "xlnx,bipolar"))
+-			sysmon_channels[i].scan_type.sign = 's';
+-		else
+-			sysmon_channels[i].scan_type.sign = 'u';
++			sysmon_channels[i].type = IIO_VOLTAGE;
++			sysmon_channels[i].indexed = 1;
++			sysmon_channels[i].address = reg;
++			sysmon_channels[i].channel = reg;
++			sysmon_channels[i].info_mask_separate =
++				BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
++			sysmon_channels[i].info_mask_shared_by_type =
++				BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
++			sysmon_channels[i].info_mask_shared_by_type_available =
++				BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
++
++			sysmon_channels[i].event_spec = sysmon_supply_events;
++			sysmon_channels[i].num_event_specs = ARRAY_SIZE(sysmon_supply_events);
++
++			sysmon_channels[i].scan_index = i;
++			sysmon_channels[i].scan_type.realbits = 19;
++			sysmon_channels[i].scan_type.storagebits = 32;
++
++			sysmon_channels[i].scan_type.endianness = IIO_CPU;
++			sysmon_channels[i].extend_name = name;
++
++			if (of_property_read_bool(child_node, "xlnx,bipolar"))
++				sysmon_channels[i].scan_type.sign = 's';
++			else
++				sysmon_channels[i].scan_type.sign = 'u';
+ 
+-		i++;
++			i++;
++		}
+ 	}
+ 
+ 	/* Append static temperature channels to the channel list */
+-	indio_dev->num_channels = num_supply_chan;
++	indio_dev->num_channels = num_supply_chan + num_aie_temp_chan;
+ 
+ 	if (sysmon->master_slr) {
+-		memcpy(sysmon_channels + num_supply_chan, temp_channels,
+-		       sizeof(temp_channels));
++		memcpy(sysmon_channels + num_supply_chan + num_aie_temp_chan,
++		       temp_channels, sizeof(temp_channels));
+ 		indio_dev->num_channels += ARRAY_SIZE(temp_channels);
+ 	}
+ 
+ 	if (sysmon->hbm_slr) {
+-		memcpy(sysmon_channels + num_supply_chan, temp_hbm_channels,
+-		       sizeof(temp_hbm_channels));
++		memcpy(sysmon_channels + num_supply_chan + num_aie_temp_chan,
++		       temp_hbm_channels, sizeof(temp_hbm_channels));
+ 		indio_dev->num_channels += num_temp_chan;
+ 	} else {
+-		memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
+-		       temp_events, sizeof(temp_events));
++		memcpy(sysmon_channels + num_supply_chan + num_aie_temp_chan +
++			   num_temp_chan, temp_events, sizeof(temp_events));
+ 		indio_dev->num_channels += ARRAY_SIZE(temp_events);
+ 	}
+ 
+diff --git a/drivers/iio/adc/versal-sysmon.h b/drivers/iio/adc/versal-sysmon.h
+index 9453a546309d..d831f0524e1e 100644
+--- a/drivers/iio/adc/versal-sysmon.h
++++ b/drivers/iio/adc/versal-sysmon.h
+@@ -1,9 +1,9 @@
+ /* SPDX-License-Identifier: GPL-2.0 */
+ /*
+- * Xilinx SYSMON for Versal
++ * AMD SYSMON for Versal
+  *
+  * Copyright (C) 2019 - 2022, Xilinx, Inc.
+- * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
++ * Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
+  *
+  * Description:
+  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
+@@ -45,6 +45,7 @@
+ #define TEMP_EVENT	164
+ #define OT_EVENT	165
+ #define TEMP_HBM	166
++#define AIE_TEMP_CH	200
+ 
+ /* Register Unlock Code */
+ #define NPI_UNLOCK	0xF9E8D7C6
+@@ -248,6 +249,7 @@ struct sysmon {
+ 	const unsigned int *oversampling_avail;
+ 	unsigned int oversampling_num;
+ 	unsigned int num_supply_chan;
++	unsigned int num_aie_temp_chan;
+ 	struct iio_dev_attr *supply_avg_en_attrs;
+ 	struct iio_dev_attr *temp_avg_en_attrs;
+ 	struct attribute **avg_attrs;
+-- 
+2.43.0
+

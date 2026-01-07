@@ -1,0 +1,38 @@
+From 30f417392b39c84fd3f52f54dbb6acbb876ef5ce Mon Sep 17 00:00:00 2001
+From: David Lechner <dlechner@baylibre.com>
+Date: Wed, 13 Aug 2025 15:43:24 -0500
+Subject: [PATCH 030/190] dt-bindings: iio: adc: xlnx,versal-sysmon: don't
+ redefine reg type
+
+commit 2e1fd39dc02e52d53791e83c3cd656b5a6957e24 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Remove the $ref from the reg property that assigns a type to it. This
+is a standard property with type of "address", so assigning a different
+type causes a conflict and even causes the dtschema tool to crash when
+running `make dtbs_check`.
+
+Signed-off-by: David Lechner <dlechner@baylibre.com>
+Message-ID: <20250813204325.3770643-1-dlechner@baylibre.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml          | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml b/Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
+index 3aa753c6ae85..28cb2327d094 100644
+--- a/Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
++++ b/Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
+@@ -70,7 +70,6 @@ patternProperties:
+ 
+     properties:
+       reg:
+-        $ref: /schemas/types.yaml#/definitions/uint32
+         minimum: 0
+         maximum: 159
+         description:
+-- 
+2.43.0
+

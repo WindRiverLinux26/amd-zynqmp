@@ -1,0 +1,50 @@
+From bf548af92b1e03673b1457c25950102c3a836600 Mon Sep 17 00:00:00 2001
+From: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Date: Thu, 6 Nov 2025 21:25:38 -0800
+Subject: [PATCH 190/190] xilinx-ai-engine: increase axi-mm outstanding timeout
+ to 2 sec
+
+commit d25fdf9fee1c8707551f590540e46b3686b90099 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+In some cases wait for outstanding axi-mm transactions takes more than
+10 milliseconds, after axi-mm pause, if there is large number of axi-mm
+requests. System would hang if reset is performed when axi-mm
+transaction is in progress.
+
+Signed-off-by: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Message-ID: <20251107052538.1087250-5-govindarajulu.varadarajan@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/misc/xilinx-ai-engine/ai-engine-reset.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-reset.c b/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
+index 7692d162ca73..502787eb9397 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
+@@ -1106,7 +1106,8 @@ static int aie_part_maskpoll_uc_outstanding_aximm_txn(struct aie_partition *apar
+ 		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
+ 						 adev->uc_outstanding_aximm->regoff);
+ 		ret = aie_part_maskpoll_register(apart, regoff, 0x0,
+-						 adev->uc_outstanding_aximm->mask, 10000);
++						 adev->uc_outstanding_aximm->mask,
++						 2000000 /* 2 seconds */);
+ 		if (ret < 0) {
+ 			dev_err(&apart->dev, "failed due to outstanding UC AXIMM transactions!\n");
+ 			return -EINVAL;
+@@ -1130,7 +1131,8 @@ static int aie_part_maskpoll_noc_outstanding_aximm_txn(struct aie_partition *apa
+ 		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
+ 						 adev->noc_outstanding_aximm->regoff);
+ 		ret = aie_part_maskpoll_register(apart, regoff, 0x0,
+-						 adev->noc_outstanding_aximm->mask, 10000);
++						 adev->noc_outstanding_aximm->mask,
++						 2000000 /* 2 seconds */);
+ 		if (ret < 0) {
+ 			dev_err(&apart->dev, "failed due to outstanding NoC AXIMM transactions!\n");
+ 			return -EINVAL;
+-- 
+2.43.0
+

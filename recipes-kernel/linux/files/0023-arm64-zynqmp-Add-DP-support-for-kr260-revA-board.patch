@@ -1,0 +1,59 @@
+From 7029defd4713b50a823a906e21d7a51145b78969 Mon Sep 17 00:00:00 2001
+From: Nithish Kumar Naroju <nithishkumar.naroju@amd.com>
+Date: Fri, 1 Aug 2025 14:55:02 +0530
+Subject: [PATCH 023/190] arm64: zynqmp: Add DP support for kr260 revA board
+
+commit 8a01a24840ea51b890a005022850a6aff901406a from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+As dpcon node is missing in zynqmp-sck-kr-g-revA.dtso,
+display is not getting up and run at kernel level
+with kr260 revA boards.
+
+Signed-off-by: Nithish Kumar Naroju <nithishkumar.naroju@amd.com>
+Message-ID: <20250801092502.1200682-1-nithishkumar.naroju@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../boot/dts/xilinx/zynqmp-sck-kr-g-revA.dtso   | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revA.dtso b/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revA.dtso
+index 9d0c0c2885df..5f8ac01eb39e 100644
+--- a/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revA.dtso
++++ b/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revA.dtso
+@@ -66,6 +66,17 @@ clk_25_1: si5332-4 { /* u17 - GEM3 */
+ 		#clock-cells = <0>;
+ 		clock-frequency = <25000000>;
+ 	};
++	dpcon {
++		compatible = "dp-connector";
++		label = "P11";
++		type = "full-size";
++
++		port {
++			dpcon_in: endpoint {
++				remote-endpoint = <&dpsub_dp_out>;
++			};
++		};
++	};
+ };
+ 
+ &i2c1 { /* I2C_SCK C26/C27 - MIO from SOM */
+@@ -140,6 +151,12 @@ &zynqmp_dpsub {
+ 	assigned-clock-rates = <27000000>, <25000000>, <300000000>;
+ };
+ 
++&out_dp {
++	dpsub_dp_out: endpoint {
++		remote-endpoint = <&dpcon_in>;
++	};
++};
++
+ &zynqmp_dpdma {
+ 	status = "okay";
+ 	assigned-clock-rates = <600000000>;
+-- 
+2.43.0
+

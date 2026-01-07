@@ -1,0 +1,72 @@
+From 8586d6b682189bd3cf126027521c8e26520a5a6d Mon Sep 17 00:00:00 2001
+From: Rohit Visavalia <rohit.visavalia@amd.com>
+Date: Fri, 3 Oct 2025 08:27:39 -0700
+Subject: [PATCH 159/190] staging: mmi-dptx: Remove unnecessary macros and code
+
+commit ee399323185c229e067ffb61b2740f61e79f99ad from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The max link rate supported by DP Tx is HBR3. The number of lanes
+supported is based on IP configuration. So remove the default macros for
+these alongwith unnecessary reinitialization after link training.
+
+Signed-off-by: Rohit Visavalia <rohit.visavalia@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20251003152739.198952-4-vishal.sagar@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/staging/xlnx-mmi-dptx/mmi_dp.c      | 2 +-
+ drivers/staging/xlnx-mmi-dptx/mmi_dp.h      | 7 +------
+ drivers/staging/xlnx-mmi-dptx/mmi_dp_link.c | 2 --
+ 3 files changed, 2 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/staging/xlnx-mmi-dptx/mmi_dp.c b/drivers/staging/xlnx-mmi-dptx/mmi_dp.c
+index 0753985ba2d3..6c0e17be2a8b 100644
+--- a/drivers/staging/xlnx-mmi-dptx/mmi_dp.c
++++ b/drivers/staging/xlnx-mmi-dptx/mmi_dp.c
+@@ -1117,7 +1117,7 @@ static int mmi_dp_probe(struct platform_device *pdev)
+ 	atomic_set(&dptx->shutdown, 0);
+ 	atomic_set(&dptx->c_connect, 0);
+ 
+-	dptx->max_rate = DPTX_DEFAULT_LINK_RATE;
++	dptx->max_rate = DPTX_MAX_LINK_RATE;
+ 
+ 	platform_set_drvdata(pdev, dptx);
+ 
+diff --git a/drivers/staging/xlnx-mmi-dptx/mmi_dp.h b/drivers/staging/xlnx-mmi-dptx/mmi_dp.h
+index 4d2fc501a194..e915b3e4cc67 100644
+--- a/drivers/staging/xlnx-mmi-dptx/mmi_dp.h
++++ b/drivers/staging/xlnx-mmi-dptx/mmi_dp.h
+@@ -25,13 +25,8 @@
+ 
+ struct dptx;
+ 
+-/* The max rate and lanes supported by the core */
++/* The max rate supported by the core */
+ #define DPTX_MAX_LINK_RATE		DPTX_PHYIF_CTRL_RATE_HBR3
+-#define DPTX_MAX_LINK_LANES		2
+-
+-/* The default rate and lanes to use for link training */
+-#define DPTX_DEFAULT_LINK_RATE		DPTX_MAX_LINK_RATE
+-#define DPTX_DEFAULT_LINK_LANES		DPTX_MAX_LINK_LANES
+ 
+ /* The max number of streams supported */
+ #define DPTX_MAX_STREAM_NUMBER		4
+diff --git a/drivers/staging/xlnx-mmi-dptx/mmi_dp_link.c b/drivers/staging/xlnx-mmi-dptx/mmi_dp_link.c
+index ec91503d1410..fe48dc24d688 100644
+--- a/drivers/staging/xlnx-mmi-dptx/mmi_dp_link.c
++++ b/drivers/staging/xlnx-mmi-dptx/mmi_dp_link.c
+@@ -1163,8 +1163,6 @@ int mmi_dp_full_link_training(struct dptx *dptx)
+ 		dptx_info(dptx, "Successful Link Training - Rate: %d Lanes: %d",
+ 			  dptx->link.rate, dptx->link.lanes);
+ 		dptx->multipixel = DPTX_MP_SINGLE_PIXEL;
+-		dptx->max_rate = DPTX_MAX_LINK_RATE;
+-		dptx->max_lanes = DPTX_MAX_LINK_LANES;
+ 		mmi_dp_set_video_dynamic_range(dptx, 1);
+ 		mmi_dp_set_video_colorimetry(dptx, 1); /* for 601 */
+ 
+-- 
+2.43.0
+

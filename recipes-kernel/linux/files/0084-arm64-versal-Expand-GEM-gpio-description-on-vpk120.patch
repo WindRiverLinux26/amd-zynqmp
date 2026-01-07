@@ -1,0 +1,78 @@
+From abcc89cad57658d94a07d43eb363a3bb4b8e79bc Mon Sep 17 00:00:00 2001
+From: Michal Simek <michal.simek@amd.com>
+Date: Mon, 18 Aug 2025 15:04:49 +0200
+Subject: [PATCH 084/190] arm64: versal: Expand GEM gpio description on vpk120
+
+commit de12786d5f8a0e6aa36ea4d2a69df1a4330e9817 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Describe gpio reset line for GEM(ethernet) on vpk120 and also use already
+defined macros for dp83867 phy.
+
+Signed-off-by: Michal Simek <michal.simek@amd.com>
+Message-ID: <62962f47b879d27147a384e7267196f938a7d581.1755522277.git.michal.simek@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts | 7 +++++--
+ arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts | 7 +++++--
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts b/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts
+index 282f38634503..c5b11a114f23 100644
+--- a/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts
++++ b/arch/arm64/boot/dts/xilinx/versal-vpk120-revA.dts
+@@ -7,6 +7,8 @@
+  * Michal Simek <michal.simek@amd.com>
+  */
+ 
++#include <dt-bindings/net/ti-dp83867.h>
++#include <dt-bindings/gpio/gpio.h>
+ #include "versal.dtsi"
+ #include "versal-clk.dtsi"
+ 
+@@ -106,10 +108,11 @@ phy1: phy@1 {
+ 			#phy-cells = <1>;
+ 			compatible = "ethernet-phy-id2000.a231";
+ 			reg = <1>;
+-			ti,rx-internal-delay = <0xb>;
+-			ti,tx-internal-delay = <0xa>;
++			ti,rx-internal-delay = <DP83867_RGMIIDCTL_3_00_NS>;
++			ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_75_NS>;
+ 			ti,fifo-depth = <1>;
+ 			ti,dp83867-rxctrl-strap-quirk;
++			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
+ 		};
+ 	};
+ };
+diff --git a/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts b/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts
+index f9494c0e432c..bb997a8ce107 100644
+--- a/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts
++++ b/arch/arm64/boot/dts/xilinx/versal-vpk120-revB.dts
+@@ -7,6 +7,8 @@
+  * Michal Simek <michal.simek@amd.com>
+  */
+ 
++#include <dt-bindings/net/ti-dp83867.h>
++#include <dt-bindings/gpio/gpio.h>
+ #include "versal.dtsi"
+ #include "versal-clk.dtsi"
+ 
+@@ -117,10 +119,11 @@ phy1: phy@1 {
+ 			#phy-cells = <1>;
+ 			compatible = "ethernet-phy-id2000.a231";
+ 			reg = <1>;
+-			ti,rx-internal-delay = <0xb>;
+-			ti,tx-internal-delay = <0xa>;
++			ti,rx-internal-delay = <DP83867_RGMIIDCTL_3_00_NS>;
++			ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_75_NS>;
+ 			ti,fifo-depth = <1>;
+ 			ti,dp83867-rxctrl-strap-quirk;
++			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
+ 		};
+ 	};
+ };
+-- 
+2.43.0
+

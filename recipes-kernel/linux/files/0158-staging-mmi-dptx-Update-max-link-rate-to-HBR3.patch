@@ -1,0 +1,36 @@
+From c6adf7510c0ef6e88c6ded4a513b264be80ed4a7 Mon Sep 17 00:00:00 2001
+From: Rohit Visavalia <rohit.visavalia@amd.com>
+Date: Fri, 3 Oct 2025 08:27:38 -0700
+Subject: [PATCH 158/190] staging: mmi-dptx: Update max link rate to HBR3
+
+commit 9efa17dced792beef1bda1fc96acc66e3c4dfbef from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Make HBR3 as max link rate which is supported by MMI DPTx IP.
+
+Signed-off-by: Rohit Visavalia <rohit.visavalia@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20251003152739.198952-3-vishal.sagar@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/staging/xlnx-mmi-dptx/mmi_dp.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/staging/xlnx-mmi-dptx/mmi_dp.h b/drivers/staging/xlnx-mmi-dptx/mmi_dp.h
+index e5f161505491..4d2fc501a194 100644
+--- a/drivers/staging/xlnx-mmi-dptx/mmi_dp.h
++++ b/drivers/staging/xlnx-mmi-dptx/mmi_dp.h
+@@ -26,7 +26,7 @@
+ struct dptx;
+ 
+ /* The max rate and lanes supported by the core */
+-#define DPTX_MAX_LINK_RATE		DPTX_PHYIF_CTRL_RATE_HBR
++#define DPTX_MAX_LINK_RATE		DPTX_PHYIF_CTRL_RATE_HBR3
+ #define DPTX_MAX_LINK_LANES		2
+ 
+ /* The default rate and lanes to use for link training */
+-- 
+2.43.0
+

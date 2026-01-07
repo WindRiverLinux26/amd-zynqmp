@@ -1,0 +1,357 @@
+From 8c529a840e61defea98cfcbebc8eff49c27c7c74 Mon Sep 17 00:00:00 2001
+From: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Date: Thu, 23 Oct 2025 14:30:10 -0700
+Subject: [PATCH 179/190] drm: xlnx: mmi-dc: MMI DC planector interface
+
+commit 58f8a00d41628a2c66753c6c21970b3f339bb5d6 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+MMI DC supports multiple modes of operations: non-live (both planes are
+driven by a DMA engine), live (one or two planes are driven by video
+streams produced by external FPGA CRTCs), and mixed (a combination of live
+and non-live modes). DRM framework doesn't support such complicated
+pipelines out of the box. This dual DRM plane / bridge interface provides
+a mean to connect MMI DC to an extarnal FPGA CRTC. Plane part allow to
+compose and blend external video signal into MMI DC output video signal.
+Bridge part provides virtual DRM connector interface to an upstream CRTC.
+
+Signed-off-by: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20251023213014.683122-2-anatoliy.klymenko@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/xlnx/Makefile           |   4 +-
+ drivers/gpu/drm/xlnx/mmi_dc_plane.c     |  18 ++
+ drivers/gpu/drm/xlnx/mmi_dc_plane.h     |   4 +
+ drivers/gpu/drm/xlnx/mmi_dc_planector.c | 252 ++++++++++++++++++++++++
+ 4 files changed, 276 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/gpu/drm/xlnx/mmi_dc_planector.c
+
+diff --git a/drivers/gpu/drm/xlnx/Makefile b/drivers/gpu/drm/xlnx/Makefile
+index a020751c21eb..bce9a3a057b9 100644
+--- a/drivers/gpu/drm/xlnx/Makefile
++++ b/drivers/gpu/drm/xlnx/Makefile
+@@ -1,5 +1,5 @@
+-mmi-dc-y := mmi_dc.o mmi_dc_cursor_plane.o mmi_dc_dma.o mmi_dc_kms.o \
+-	    mmi_dc_plane.o mmi_dc_video_plane.o mmi_dc_audio.o
++mmi-dc-y := mmi_dc.o mmi_dc_audio.o mmi_dc_cursor_plane.o mmi_dc_dma.o mmi_dc_kms.o \
++	    mmi_dc_plane.o mmi_dc_planector.o mmi_dc_video_plane.o
+ obj-$(CONFIG_DRM_AMD_MMI_DC) += mmi-dc.o
+ zynqmp-dpsub-y := zynqmp_disp.o zynqmp_dpsub.o zynqmp_dp.o zynqmp_kms.o
+ zynqmp-dpsub-$(CONFIG_DRM_ZYNQMP_DPSUB_AUDIO) += zynqmp_dp_audio.o
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_plane.c b/drivers/gpu/drm/xlnx/mmi_dc_plane.c
+index d4c77da058db..eaf68b06f6be 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc_plane.c
++++ b/drivers/gpu/drm/xlnx/mmi_dc_plane.c
+@@ -8,6 +8,8 @@
+ #include "mmi_dc.h"
+ #include "mmi_dc_plane.h"
+ 
++#include <linux/of.h>
++
+ /**
+  * drm_to_dc_plane - Convert DRM plane to DC plane
+  * @plane: generic DRM plane
+@@ -128,8 +130,24 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
+ 		[MMI_DC_PLANE1] = mmi_dc_create_overlay_plane,
+ 		[MMI_DC_CURSOR] = mmi_dc_create_cursor_plane,
+ 	};
++	const char *live_prop = "xlnx,dc-live-video-select";
++	struct device_node *node = dc->dev->of_node;
+ 	unsigned int i;
+ 
++	if (dc->pl_pixel_clk && of_property_present(node, live_prop)) {
++		if (!of_property_match_string(node, live_prop, "Both")) {
++			factory[MMI_DC_PLANE0] = mmi_dc_create_planector;
++			factory[MMI_DC_PLANE1] = mmi_dc_create_planector;
++		} else if (!of_property_match_string(node, live_prop, "V01")) {
++			factory[MMI_DC_PLANE0] = mmi_dc_create_planector;
++		} else if (!of_property_match_string(node, live_prop, "V02")) {
++			factory[MMI_DC_PLANE1] = mmi_dc_create_planector;
++		} else {
++			dev_err(dc->dev, "malformed %s property\n", live_prop);
++			return -EINVAL;
++		}
++	}
++
+ 	for (i = 0; i < ARRAY_SIZE(dc->planes); ++i) {
+ 		struct mmi_dc_plane *plane = factory[i](dc, drm, i);
+ 		int ret;
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_plane.h b/drivers/gpu/drm/xlnx/mmi_dc_plane.h
+index 805752a72a0e..4cd7abc9a45f 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc_plane.h
++++ b/drivers/gpu/drm/xlnx/mmi_dc_plane.h
+@@ -118,6 +118,10 @@ struct mmi_dc_plane *mmi_dc_create_cursor_plane(struct mmi_dc *dc,
+ 						struct drm_device *drm,
+ 						enum mmi_dc_plane_id id);
+ 
++struct mmi_dc_plane *mmi_dc_create_planector(struct mmi_dc *dc,
++					     struct drm_device *drm,
++					     enum mmi_dc_plane_id id);
++
+ /* ----------------------------------------------------------------------------
+  * DC Plane to CRTC Interface
+  */
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_planector.c b/drivers/gpu/drm/xlnx/mmi_dc_planector.c
+new file mode 100644
+index 000000000000..2f33193e6b7b
+--- /dev/null
++++ b/drivers/gpu/drm/xlnx/mmi_dc_planector.c
+@@ -0,0 +1,252 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * MMI Display Controller Live Video Plane / Bridge Driver
++ *
++ * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
++ */
++
++#include "mmi_dc.h"
++#include "mmi_dc_plane.h"
++
++#include <drm/drm_blend.h>
++#include <drm/drm_bridge.h>
++#include <drm/drm_bridge_connector.h>
++#include <drm/drm_connector.h>
++#include <drm/drm_edid.h>
++#include <drm/drm_fourcc.h>
++
++struct mmi_dc_planector {
++	struct mmi_dc_plane		base;
++	struct drm_bridge		bridge;
++	enum drm_connector_status	connector_status;
++	int				hdisplay;
++	int				vdisplay;
++	int				vrefresh;
++};
++
++/**
++ * plane_to_planector - Convert generic MMI DC plane to planector
++ * @plane: MMI DC plane
++ *
++ * Return: Corresponding planector.
++ */
++static inline struct mmi_dc_planector *
++plane_to_planector(struct mmi_dc_plane *plane)
++{
++	return container_of(plane, struct mmi_dc_planector, base);
++}
++
++/**
++ * bridge_to_planector - Convert DRM bridge to planector
++ * @bridge: DRM bridge
++ *
++ * Return: Corresponding planector.
++ */
++static inline struct mmi_dc_planector *
++bridge_to_planector(struct drm_bridge *bridge)
++{
++	return container_of(bridge, struct mmi_dc_planector, bridge);
++}
++
++/* ----------------------------------------------------------------------------
++ * DRM Bridge
++ */
++
++static int mmi_dc_planector_bridge_attach(struct drm_bridge *bridge,
++					  enum drm_bridge_attach_flags flags)
++{
++	struct drm_encoder *encoder = bridge->encoder;
++	struct drm_connector *connector;
++	int ret;
++
++	if (flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR)
++		return 0;
++
++	connector = drm_bridge_connector_init(bridge->dev, encoder);
++	if (IS_ERR(connector))
++		return PTR_ERR(connector);
++
++	ret = drm_connector_attach_encoder(connector, encoder);
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
++static void
++mmi_dc_planector_bridge_enable(struct drm_bridge *bridge,
++			       struct drm_bridge_state *old_bridge_state)
++{
++	/* TODO: config blender and avbuf */
++}
++
++static void
++mmi_dc_planector_bridge_disable(struct drm_bridge *bridge,
++				struct drm_bridge_state *old_bridge_state)
++{
++	/* TODO: disable blender and avbuf */
++}
++
++static enum drm_connector_status
++mmi_dc_planector_bridge_detect(struct drm_bridge *bridge)
++{
++	struct mmi_dc_planector *planector = bridge_to_planector(bridge);
++
++	return planector->connector_status;
++}
++
++static int mmi_dc_planector_bridge_get_modes(struct drm_bridge *bridge,
++					     struct drm_connector *connector)
++{
++	struct mmi_dc_planector *planector = bridge_to_planector(bridge);
++	struct mmi_dc *dc = planector->base.dc;
++	/* For now we support only progressive, regular blanking video modes */
++	struct drm_display_mode *mode = drm_cvt_mode(bridge->dev,
++						     planector->hdisplay,
++						     planector->vdisplay,
++						     planector->vrefresh,
++						     false, false, false);
++
++	if (mode) {
++		drm_mode_probed_add(connector, mode);
++		return 1;
++	}
++
++	dev_err(dc->dev, "failed to create %dx%d-%d mode\n",
++		planector->hdisplay, planector->vdisplay, planector->vrefresh);
++
++	return 0;
++}
++
++static const struct drm_bridge_funcs mmi_dc_planector_bridge_funcs = {
++	.attach			= mmi_dc_planector_bridge_attach,
++	.atomic_enable		= mmi_dc_planector_bridge_enable,
++	.atomic_disable		= mmi_dc_planector_bridge_disable,
++	.detect			= mmi_dc_planector_bridge_detect,
++	.get_modes		= mmi_dc_planector_bridge_get_modes,
++
++	/* TODO: input bus formats handling */
++
++	.atomic_duplicate_state	= drm_atomic_helper_bridge_duplicate_state,
++	.atomic_destroy_state	= drm_atomic_helper_bridge_destroy_state,
++	.atomic_reset		= drm_atomic_helper_bridge_reset,
++};
++
++/**
++ * mmi_dc_planector_bridge_init - Initialize DRM bridge part of planector
++ * @planector: pointer to DC planector
++ */
++static void mmi_dc_planector_bridge_init(struct mmi_dc_planector *planector)
++{
++	struct drm_bridge *bridge = &planector->bridge;
++
++	bridge->funcs = &mmi_dc_planector_bridge_funcs;
++	bridge->ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_HPD
++		    | DRM_BRIDGE_OP_MODES;
++	bridge->type = DRM_MODE_CONNECTOR_VIRTUAL;
++	bridge->of_node = planector->base.dc->dev->of_node;
++
++	planector->connector_status = connector_status_disconnected;
++
++	drm_bridge_add(bridge);
++}
++
++/* ----------------------------------------------------------------------------
++ * DC Plane Interface Implementation
++ */
++
++static int mmi_dc_planector_check(struct mmi_dc_plane *plane,
++				  struct drm_atomic_state *state)
++{
++	struct drm_plane_state *plane_state =
++		drm_atomic_get_new_plane_state(state, &plane->base);
++	struct drm_crtc_state *crtc_state =
++		drm_atomic_get_crtc_state(state, plane_state->crtc);
++
++	if (IS_ERR(crtc_state))
++		return PTR_ERR(crtc_state);
++
++	return drm_atomic_helper_check_plane_state(plane_state, crtc_state,
++						   DRM_PLANE_NO_SCALING,
++						   DRM_PLANE_NO_SCALING,
++						   false, false);
++}
++
++static void mmi_dc_planector_update(struct mmi_dc_plane *plane,
++				    struct drm_atomic_state *state)
++{
++	struct mmi_dc_planector *planector = plane_to_planector(plane);
++	struct drm_plane_state *plane_state =
++		drm_atomic_get_new_plane_state(state, &plane->base);
++
++	if (!plane_state->fb)
++		return;
++
++	if (planector->connector_status != connector_status_connected) {
++		struct drm_crtc_state *crtc_state =
++			drm_atomic_get_new_crtc_state(state,
++						      plane_state->crtc);
++
++		planector->connector_status = connector_status_connected;
++		planector->hdisplay = crtc_state->adjusted_mode.hdisplay;
++		planector->vdisplay = crtc_state->adjusted_mode.vdisplay;
++		planector->vrefresh =
++			drm_mode_vrefresh(&crtc_state->adjusted_mode);
++		drm_bridge_hpd_notify(&planector->bridge,
++				      planector->connector_status);
++	}
++}
++
++static void mmi_dc_planector_disable(struct mmi_dc_plane *plane)
++{
++	struct mmi_dc_planector *planector = plane_to_planector(plane);
++
++	planector->connector_status = connector_status_disconnected;
++
++	drm_bridge_hpd_notify(&planector->bridge, planector->connector_status);
++}
++
++/**
++ * mmi_dc_create_planector - Create and initialize DC planector
++ * @dc: pointer to MMI DC
++ * @drm: DRM device
++ * @id: DC plane id
++ *
++ * Return: New DC planector on success or error pointer otherwise.
++ */
++struct mmi_dc_plane *mmi_dc_create_planector(struct mmi_dc *dc,
++					     struct drm_device *drm,
++					     enum mmi_dc_plane_id id)
++{
++	static const u32 format = DRM_FORMAT_XRGB8888;
++	struct mmi_dc_planector *planector;
++	enum drm_plane_type plane_type = id == MMI_DC_PLANE0
++					 ? DRM_PLANE_TYPE_PRIMARY
++					 : DRM_PLANE_TYPE_OVERLAY;
++
++	if (id > MMI_DC_PLANE1)
++		return ERR_PTR(-EINVAL);
++
++	planector = drmm_universal_plane_alloc(drm, struct mmi_dc_planector,
++					       base.base, 0,
++					       &mmi_dc_drm_plane_funcs,
++					       &format, 1, NULL, plane_type,
++					       NULL);
++	if (IS_ERR(planector))
++		return (void *)planector;
++
++	planector->base.id = id;
++	planector->base.dc = dc;
++	planector->base.funcs.check = mmi_dc_planector_check;
++	planector->base.funcs.update = mmi_dc_planector_update;
++	planector->base.funcs.disable = mmi_dc_planector_disable;
++
++	drm_plane_helper_add(&planector->base.base,
++			     &mmi_dc_drm_plane_helper_funcs);
++
++	drm_plane_create_zpos_immutable_property(&planector->base.base, id);
++
++	mmi_dc_planector_bridge_init(planector);
++
++	return &planector->base;
++}
+-- 
+2.43.0
+

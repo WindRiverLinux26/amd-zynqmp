@@ -1,0 +1,410 @@
+From b90461a43bc428e79639d910845245851cefeee8 Mon Sep 17 00:00:00 2001
+From: "Sagar, Vishal" <vishal.sagar@amd.com>
+Date: Mon, 6 Oct 2025 07:07:06 -0700
+Subject: [PATCH 160/190] drm: xlnx: mmi-dc: Add video clock source selection
+ property
+
+commit 10f10e110a3486b663bb7481c35f21de6527b68b from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The MMI DC supports switching between the PS video clock and PL video
+clock via a glitch free mux. Add support for this switching by creating
+a drm property and attach it to the MMI DC crtc. Both the pixel
+clocks (if available) are programmed to the required mode clock so that
+the switch to other video clock source happens instantly. The PL clock
+is preferred to be used as pixel clock as it is more accurate than the
+PS clock.
+
+Reviewed-by: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Signed-off-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20251006140708.2782229-2-vishal.sagar@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/xlnx/mmi_dc.c     |  57 +++++++++++-
+ drivers/gpu/drm/xlnx/mmi_dc.h     |  24 ++++-
+ drivers/gpu/drm/xlnx/mmi_dc_kms.c | 149 ++++++++++++++++++++++++------
+ 3 files changed, 194 insertions(+), 36 deletions(-)
+
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc.c b/drivers/gpu/drm/xlnx/mmi_dc.c
+index dd00affc693c..924c75d861d9 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc.c
++++ b/drivers/gpu/drm/xlnx/mmi_dc.c
+@@ -356,6 +356,48 @@ static irqreturn_t mmi_dc_irq_handler(int irq, void *data)
+ 	return IRQ_HANDLED;
+ }
+ 
++int mmi_dc_set_vid_clk_src(struct mmi_dc *dc, enum mmi_dc_vid_clk_src vidclksrc)
++{
++	u32 val = 0;
++
++	if (vidclksrc == MMIDC_AUX0_REF_CLK)
++		val = MMI_DC_MISC_VID_CLK_PS;
++	else if (vidclksrc == MMIDC_PL_CLK)
++		val = MMI_DC_MISC_VID_CLK_PL;
++
++	dc_write_misc(dc, MMI_DC_MISC_VID_CLK, val);
++
++	return 0;
++}
++
++enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc)
++{
++	u32 val;
++	enum mmi_dc_vid_clk_src ret = MMIDC_AUX0_REF_CLK;
++
++	val = dc_read_misc(dc, MMI_DC_MISC_VID_CLK);
++
++	if (val == MMI_DC_MISC_VID_CLK_PL)
++		ret = MMIDC_PL_CLK;
++	if (val == MMI_DC_MISC_VID_CLK_PS)
++		ret = MMIDC_AUX0_REF_CLK;
++
++	return ret;
++}
++
++static struct clk *mmi_dc_init_clk(struct mmi_dc *dc, const char *clk_name)
++{
++	struct clk *dc_clk = devm_clk_get(dc->dev, clk_name);
++
++	if (IS_ERR(dc_clk)) {
++		dev_dbg(dc->dev, "failed to get %s %ld\n",
++			clk_name, PTR_ERR(dc_clk));
++		dc_clk = NULL;
++	}
++
++	return dc_clk;
++}
++
+ /**
+  * mmi_dc_init - Initialize MMI DC hardware
+  * @dc: MMI DC device
+@@ -393,6 +435,15 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
+ 		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
+ 				     "failed to get reset control\n");
+ 
++	/* Get all the video clocks */
++	dc->pl_pixel_clk = mmi_dc_init_clk(dc, "pl_vid_func_clk");
++	dc->ps_pixel_clk = mmi_dc_init_clk(dc, "ps_vid_clk");
++
++	if (!dc->ps_pixel_clk && !dc->pl_pixel_clk) {
++		dev_err(dc->dev, "at least one pixel clock is needed!\n");
++		return -EINVAL;
++	}
++
+ 	mmi_dc_reset_hw(dc);
+ 
+ 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
+@@ -412,10 +463,10 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
+ 	mmi_dc_set_dma_align(dc);
+ 
+ 	/* Set video clock source */
+-	if (dc->is_ps_clk)
+-		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
+-	else
++	if (dc->pl_pixel_clk)
+ 		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PL);
++	else
++		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
+ 
+ 	mmi_dc_reset(dc, true);
+ 	msleep(MMI_DC_MSLEEP_50MS);
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc.h b/drivers/gpu/drm/xlnx/mmi_dc.h
+index ff90a43cc047..ff9bd7a853cc 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc.h
++++ b/drivers/gpu/drm/xlnx/mmi_dc.h
+@@ -65,10 +65,10 @@ struct mmi_audio;
+  * @misc: misc control register space
+  * @irq: interrupt control register space
+  * @rst: external reset
+- * @pixel_clk: pixel clock
++ * @pl_pixel_clk: PL pixel clock pl_dc2x or pl_dc1x
++ * @ps_pixel_clk: PS pixel clock mmi_aux0_ref_clk
+  * @aud_clk: audio clock
+  * @audio: Audio data
+- * @is_ps_clk: flag for PS pixel clock source
+  * @irq_num: interrupt lane number
+  */
+ struct mmi_dc {
+@@ -85,10 +85,10 @@ struct mmi_dc {
+ 	void __iomem		*misc;
+ 	void __iomem		*irq;
+ 	struct reset_control	*rst;
+-	struct clk		*pixel_clk;
++	struct clk		*pl_pixel_clk;
++	struct clk		*ps_pixel_clk;
+ 	struct clk		*aud_clk;
+ 	struct mmi_audio	*audio;
+-	bool			is_ps_clk;
+ 	int			irq_num;
+ };
+ 
+@@ -110,6 +110,20 @@ DEFINE_REGISTER_OPS(avbuf);
+ DEFINE_REGISTER_OPS(misc);
+ DEFINE_REGISTER_OPS(irq);
+ 
++/**
++ * enum mmi_dc_vid_clk_src: Source of video clock for the MMI DC
++ *
++ * @MMIDC_AUX0_REF_CLK : PS pixel clock source
++ * @MMIDC_PL_CLK : PL pixel clock source
++ * @MMIDC_VID_CLK_SRC_COUNT : Count of video clock source enums
++ */
++
++enum mmi_dc_vid_clk_src {
++	MMIDC_AUX0_REF_CLK,
++	MMIDC_PL_CLK,
++	MMIDC_VID_CLK_SRC_COUNT
++};
++
+ void mmi_dc_set_global_alpha(struct mmi_dc *dc, u8 alpha, bool enable);
+ void mmi_dc_enable_vblank(struct mmi_dc *dc);
+ void mmi_dc_disable_vblank(struct mmi_dc *dc);
+@@ -119,5 +133,7 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm);
+ void mmi_dc_fini(struct mmi_dc *dc);
+ void mmi_dc_reset_hw(struct mmi_dc *dc);
+ void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
++int mmi_dc_set_vid_clk_src(struct mmi_dc *dc, enum mmi_dc_vid_clk_src vidclksrc);
++enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc);
+ 
+ #endif /* __MMI_DC_H__ */
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_kms.c b/drivers/gpu/drm/xlnx/mmi_dc_kms.c
+index 447f9ada2227..46783f519903 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc_kms.c
++++ b/drivers/gpu/drm/xlnx/mmi_dc_kms.c
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/clk-provider.h>
+ #include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+@@ -53,6 +54,8 @@ MODULE_PARM_DESC(wb, "Enable writeback through PL feedback path");
+  * @crtc: DRM CRTC
+  * @encoder: DRM encoder
+  * @bridge: DRM chain pointer
++ * @vid_clk_src_prop: DC Video clock source property associated with this crtc
++ * @vid_clk_src_val: property value of vid_clk_src_prop
+  */
+ struct mmi_dc_drm {
+ 	struct mmi_dc	*dc;
+@@ -61,6 +64,14 @@ struct mmi_dc_drm {
+ 	struct drm_crtc		crtc;
+ 	struct drm_encoder	encoder;
+ 	struct drm_bridge	*bridge;
++
++	struct drm_property	*vid_clk_src_prop;
++	enum mmi_dc_vid_clk_src vid_clk_src_val;
++};
++
++static const char * const mmi_dc_vid_clk_src_names[] = {
++	[MMIDC_AUX0_REF_CLK]	= "PS_VID_CLK",
++	[MMIDC_PL_CLK]		= "PL_VID_CLK",
+ };
+ 
+ /**
+@@ -122,32 +133,49 @@ void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm)
+ 	drm_crtc_handle_vblank(&drm->crtc);
+ }
+ 
++static int mmi_dc_set_clk(struct mmi_dc *dc, struct clk *clock, unsigned long clock_rate)
++{
++	unsigned long rate;
++	int ret = 0;
++	const char *clock_name = __clk_get_name(clock);
++
++	ret = clk_set_rate(clock, clock_rate);
++	if (ret) {
++		dev_err(dc->dev, "failed to set %s clock ret:%d\n", clock_name, ret);
++		return ret;
++	}
++
++	ret = clk_prepare_enable(clock);
++	if (ret) {
++		dev_err(dc->dev, "failed to enable the %s clock ret:%d\n", clock_name, ret);
++		return ret;
++	}
++
++	rate = clk_get_rate(clock);
++	dev_dbg(dc->dev, "requested %s rate: %lu actual rate: %lu diff: %lu\n",
++		clock_name, clock_rate, rate, abs(rate - clock_rate));
++
++	return ret;
++}
++
+ static void mmi_dc_crtc_atomic_enable(struct drm_crtc *crtc,
+ 				      struct drm_atomic_state *state)
+ {
+ 	struct mmi_dc *dc = crtc_to_dc(crtc);
+ 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+-	int vrefresh, ret;
+-	unsigned long rate;
+ 	unsigned long mode_clock = adjusted_mode->clock * 1000;
++	int vrefresh, ret = 0;
+ 
+ 	pm_runtime_get_sync(dc->dev);
+ 
+-	ret = clk_set_rate(dc->pixel_clk, mode_clock);
+-	if (ret) {
+-		dev_err(dc->dev, "failed to set pixel clock ret:%d\n", ret);
+-		return;
+-	}
++	if (dc->pl_pixel_clk)
++		ret |= mmi_dc_set_clk(dc, dc->pl_pixel_clk, mode_clock);
+ 
+-	ret = clk_prepare_enable(dc->pixel_clk);
+-	if (ret) {
+-		dev_err(dc->dev, "failed to enable the pixel clock ret:%d\n", ret);
+-		return;
+-	}
++	if (dc->ps_pixel_clk)
++		ret |= mmi_dc_set_clk(dc, dc->ps_pixel_clk, mode_clock);
+ 
+-	rate = clk_get_rate(dc->pixel_clk);
+-	dev_dbg(dc->dev, "requested pixel rate: %lu actual rate: %lu diff: %lu\n",
+-		mode_clock, rate, abs(rate - mode_clock));
++	if (ret)
++		return;
+ 
+ 	mmi_dc_enable(dc, adjusted_mode);
+ 
+@@ -173,7 +201,11 @@ static void mmi_dc_crtc_atomic_disable(struct drm_crtc *crtc,
+ 	}
+ 	spin_unlock_irq(&crtc->dev->event_lock);
+ 
+-	clk_disable_unprepare(dc->pixel_clk);
++	if (dc->pl_pixel_clk)
++		clk_disable_unprepare(dc->pl_pixel_clk);
++	if (dc->ps_pixel_clk)
++		clk_disable_unprepare(dc->ps_pixel_clk);
++
+ 	pm_runtime_put_sync(dc->dev);
+ }
+ 
+@@ -225,6 +257,50 @@ static const struct drm_crtc_helper_funcs mmi_dc_crtc_helper_funcs = {
+ 	.atomic_flush	= mmi_dc_crtc_atomic_flush,
+ };
+ 
++static int mmi_dc_crtc_set_property(struct drm_crtc *crtc,
++				    struct drm_crtc_state *state,
++				    struct drm_property *property,
++				    uint64_t val)
++{
++	struct mmi_dc *dc = crtc_to_dc(crtc);
++	struct mmi_dc_drm *dc_drm = dc->drm;
++	int ret = -EINVAL;
++
++	if (property == dc_drm->vid_clk_src_prop) {
++		enum mmi_dc_vid_clk_src vidclksrc;
++
++		if (val != MMIDC_AUX0_REF_CLK && val != MMIDC_PL_CLK)
++			return -EINVAL;
++
++		if ((val == MMIDC_PL_CLK && !dc->pl_pixel_clk) ||
++		    (val == MMIDC_AUX0_REF_CLK && !dc->ps_pixel_clk))
++			return -EINVAL;
++
++		vidclksrc = (enum mmi_dc_vid_clk_src)val;
++		ret = mmi_dc_set_vid_clk_src(dc, vidclksrc);
++	}
++
++	return ret;
++}
++
++static int mmi_dc_crtc_get_property(struct drm_crtc *crtc,
++				    const struct drm_crtc_state *state,
++				    struct drm_property *property,
++				    uint64_t *val)
++{
++	struct mmi_dc *dc = crtc_to_dc(crtc);
++	struct mmi_dc_drm *dc_drm = dc->drm;
++	int ret = -EINVAL;
++
++	if (property == dc_drm->vid_clk_src_prop) {
++		dc_drm->vid_clk_src_val = mmi_dc_get_vid_clk_src(dc);
++		*val = dc_drm->vid_clk_src_val;
++		ret = 0;
++	}
++
++	return ret;
++}
++
+ static int mmi_dc_crtc_enable_vblank(struct drm_crtc *crtc)
+ {
+ 	struct mmi_dc *dc = crtc_to_dc(crtc);
+@@ -250,8 +326,23 @@ static const struct drm_crtc_funcs mmi_dc_dpsub_crtc_funcs = {
+ 	.atomic_destroy_state	= drm_atomic_helper_crtc_destroy_state,
+ 	.enable_vblank		= mmi_dc_crtc_enable_vblank,
+ 	.disable_vblank		= mmi_dc_crtc_disable_vblank,
++	.atomic_set_property	= mmi_dc_crtc_set_property,
++	.atomic_get_property	= mmi_dc_crtc_get_property,
+ };
+ 
++static struct drm_property *mmi_dc_create_vid_clk_property(struct mmi_dc *dc, const char *name)
++{
++	struct drm_prop_enum_list enum_list[MMIDC_VID_CLK_SRC_COUNT];
++	int len;
++
++	for (len = 0; len < MMIDC_VID_CLK_SRC_COUNT; len++) {
++		enum_list[len].type = len;
++		enum_list[len].name = mmi_dc_vid_clk_src_names[len];
++	}
++
++	return drm_property_create_enum(&dc->drm->drm, DRM_MODE_PROP_ENUM, name, enum_list, len);
++}
++
+ /**
+  * mmi_dc_create_crtc - Create DRM CRTC interface for MMI DC
+  * @dc: MMI DC device
+@@ -263,6 +354,8 @@ static int mmi_dc_create_crtc(struct mmi_dc *dc)
+ 	struct drm_plane *primary = mmi_dc_plane_get_primary(dc);
+ 	struct drm_plane *cursor = mmi_dc_plane_get_cursor(dc);
+ 	struct drm_crtc *crtc = &dc->drm->crtc;
++	struct drm_mode_object *obj = &crtc->base;
++	struct mmi_dc_drm *dc_drm = dc->drm;
+ 	int ret;
+ 
+ 	/* TODO cursor plane */
+@@ -277,6 +370,17 @@ static int mmi_dc_create_crtc(struct mmi_dc *dc)
+ 
+ 	drm_crtc_vblank_off(crtc);
+ 
++	/* create the dc_vid_clk_src property */
++	if (dc->ps_pixel_clk && dc->pl_pixel_clk) {
++		dc_drm->vid_clk_src_prop = mmi_dc_create_vid_clk_property(dc, "dc_vid_clk_src");
++		if (!dc_drm->vid_clk_src_prop) {
++			dev_err(dc->dev, "failed to create crtc property\n");
++			drm_crtc_cleanup(crtc);
++			return -ENOMEM;
++		}
++		drm_object_attach_property(obj, dc_drm->vid_clk_src_prop, MMIDC_AUX0_REF_CLK);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -534,19 +638,6 @@ static int mmi_dc_probe(struct platform_device *pdev)
+ 		return ret;
+ 	}
+ 
+-	dc->pixel_clk = devm_clk_get(dc->dev, "pl_vid_func_clk");
+-	if (IS_ERR(dc->pixel_clk)) {
+-		dev_dbg(dc->dev, "failed to get pl_vid_func_clk %ld\n",
+-			PTR_ERR(dc->pixel_clk));
+-		dc->pixel_clk = devm_clk_get(dc->dev, "ps_vid_clk");
+-		if (IS_ERR(dc->pixel_clk))
+-			return dev_err_probe(dc->dev, PTR_ERR(dc->pixel_clk),
+-					     "failed to get ps_vid_clk\n");
+-		dc->is_ps_clk = true;
+-	} else {
+-		dc->is_ps_clk = false;
+-	}
+-
+ 	ret = mmi_dc_drm_init(dc);
+ 	if (ret < 0)
+ 		return ret;
+-- 
+2.43.0
+

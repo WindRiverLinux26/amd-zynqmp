@@ -1,0 +1,40 @@
+From 93c07a08c9a5197476af2bf5a1abae694c9b95d1 Mon Sep 17 00:00:00 2001
+From: Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
+Date: Fri, 18 Jul 2025 12:22:26 +0530
+Subject: [PATCH 005/190] clk: clocking-wizard: Fix the round rate handling for
+ versal
+
+commit 3f8cd035f6409463d674d0a33e94f37363ef00f7 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Fix the `clk_round_rate` implementation for Versal platforms by calling
+the Versal-specific divider calculation helper. The existing code used
+the generic divider routine, which results in incorrect round rate.
+
+Fixes: 7681f64e6404 ("clk: clocking-wizard: calculate dividers fractional parts")
+Signed-off-by: Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
+Link: https://lore.kernel.org/all/20250625054114.28273-1-shubhrajyoti.datta@amd.com/
+State: waiting
+Message-ID: <6844c925609522ff1c04afd7c1a31158278daddc.1752820940.git.shubhrajyoti.datta@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/clk/xilinx/clk-xlnx-clock-wizard.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/xilinx/clk-xlnx-clock-wizard.c b/drivers/clk/xilinx/clk-xlnx-clock-wizard.c
+index 4dd3dd0d4c9b..f209a02e8272 100644
+--- a/drivers/clk/xilinx/clk-xlnx-clock-wizard.c
++++ b/drivers/clk/xilinx/clk-xlnx-clock-wizard.c
+@@ -669,7 +669,7 @@ static long clk_wzrd_ver_round_rate_all(struct clk_hw *hw, unsigned long rate,
+ 	u32 m, d, o, div, f;
+ 	int err;
+ 
+-	err = clk_wzrd_get_divisors(hw, rate, *prate);
++	err = clk_wzrd_get_divisors_ver(hw, rate, *prate);
+ 	if (err)
+ 		return err;
+ 
+-- 
+2.43.0
+

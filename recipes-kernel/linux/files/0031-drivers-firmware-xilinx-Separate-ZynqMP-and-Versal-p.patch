@@ -1,0 +1,60 @@
+From 44d266e142580780dc71d41c1a8f39b68460eb23 Mon Sep 17 00:00:00 2001
+From: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Date: Mon, 18 Aug 2025 04:58:57 -0700
+Subject: [PATCH 031/190] drivers: firmware: xilinx: Separate ZynqMP and Versal
+ platform data
+
+commit 25686121833f412bcdec0480c1250d22cf555df4 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Currently, the platform data in the firmware driver is shared between ZynqMP
+and Versal platforms. To support the addition of unique family codes for all
+platforms, the ZynqMP and Versal platform data are now separated.
+
+Signed-off-by: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+State: not-upstreamable
+Message-ID: <20250818115901.3692021-2-jay.buddhabhatti@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/firmware/xilinx/zynqmp-core.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/firmware/xilinx/zynqmp-core.c b/drivers/firmware/xilinx/zynqmp-core.c
+index 88a9164ed682..1e86e802f093 100644
+--- a/drivers/firmware/xilinx/zynqmp-core.c
++++ b/drivers/firmware/xilinx/zynqmp-core.c
+@@ -898,7 +898,15 @@ static const struct platform_fw_data platform_fw_data_versal2 = {
+ 	.load_pdi_word_swap = true,
+ };
+ 
+-static const struct platform_fw_data platform_fw_data_zynqmp_and_versal = {
++static const struct platform_fw_data platform_fw_data_versal = {
++	.do_feature_check = do_feature_check_basic,
++	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
++	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
++	/* the word swapping is done in TF-A */
++	.load_pdi_word_swap = false,
++};
++
++static const struct platform_fw_data platform_fw_data_zynqmp = {
+ 	.do_feature_check = do_feature_check_basic,
+ 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
+ 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
+@@ -909,11 +917,11 @@ static const struct platform_fw_data platform_fw_data_zynqmp_and_versal = {
+ static const struct of_device_id zynqmp_firmware_of_match[] = {
+ 	{
+ 		.compatible = "xlnx,zynqmp-firmware",
+-		.data = &platform_fw_data_zynqmp_and_versal,
++		.data = &platform_fw_data_zynqmp,
+ 	},
+ 	{
+ 		.compatible = "xlnx,versal-firmware",
+-		.data = &platform_fw_data_zynqmp_and_versal,
++		.data = &platform_fw_data_versal,
+ 	},
+ 	{
+ 		.compatible = "xlnx,versal2-firmware",
+-- 
+2.43.0
+

@@ -1,0 +1,64 @@
+From 68d53693e61b520b543971018269fe5462095a54 Mon Sep 17 00:00:00 2001
+From: Abin Joseph <abin.joseph@amd.com>
+Date: Tue, 22 Jul 2025 12:32:55 +0530
+Subject: [PATCH 065/190] dmaengine: zynqmp_dma: Add shutdown operation support
+
+commit 15f69d655a7822bbc6e8822dfe387dccba5b7025 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add shutdown callback to ensure that DMA operations are properly stopped
+and resources are released during system shutdown or kexec operations.
+Fix incorrect PM state handling in the remove function that was causing
+clock disable warnings during the shutdown operations, which was not
+implemented earlier. The original logic used pm_runtime_enabled() check
+after calling the pm_runtime_disable(), would always evaluate to true
+after the disable call, which leads to unconditionally calling the
+runtime_suspend regardless of the device's actual power state.
+
+During shutdown, the device may already be suspended with clock disabled
+from the autosuspend timer, causing the clock framework to warn about
+the double-disable attempt. The pm_runtime_active() function checks the
+actual device power state rather than the PM subsystem's enabled/disabled
+status. ensuring the runtime_suspend is only called when the device is in
+active power state. This prevents clock warnings during shutdown while
+maintaining proper cleanup during normal remove operations.
+
+Signed-off-by: Abin Joseph <abin.joseph@amd.com>
+Reviewed-by: Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+Link: https://lore.kernel.org/r/20250722070255.28944-1-abin.joseph@amd.com
+Signed-off-by: Vinod Koul <vkoul@kernel.org>
+State: upstream (72dd8b2914b5db1dccf902971c2ea6b541711b28)
+Message-ID: <20250825124741.4043-1-abin.joseph@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/dma/xilinx/zynqmp_dma.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/dma/xilinx/zynqmp_dma.c b/drivers/dma/xilinx/zynqmp_dma.c
+index 167161d9acde..26b03fbb3cb4 100644
+--- a/drivers/dma/xilinx/zynqmp_dma.c
++++ b/drivers/dma/xilinx/zynqmp_dma.c
+@@ -1179,9 +1179,9 @@ static void zynqmp_dma_remove(struct platform_device *pdev)
+ 	dma_async_device_unregister(&zdev->common);
+ 
+ 	zynqmp_dma_chan_remove(zdev->chan);
+-	pm_runtime_disable(zdev->dev);
+-	if (!pm_runtime_enabled(zdev->dev))
++	if (pm_runtime_active(zdev->dev))
+ 		zynqmp_dma_runtime_suspend(zdev->dev);
++	pm_runtime_disable(zdev->dev);
+ }
+ 
+ static const struct of_device_id zynqmp_dma_of_match[] = {
+@@ -1199,6 +1199,7 @@ static struct platform_driver zynqmp_dma_driver = {
+ 	},
+ 	.probe = zynqmp_dma_probe,
+ 	.remove_new = zynqmp_dma_remove,
++	.shutdown = zynqmp_dma_remove,
+ };
+ 
+ module_platform_driver(zynqmp_dma_driver);
+-- 
+2.43.0
+

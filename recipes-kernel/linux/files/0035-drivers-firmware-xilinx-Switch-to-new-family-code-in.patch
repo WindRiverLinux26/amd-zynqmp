@@ -1,0 +1,496 @@
+From 5bcfac95f668f7eadc169f4b7a133d3d4034e78d Mon Sep 17 00:00:00 2001
+From: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Date: Mon, 18 Aug 2025 04:59:01 -0700
+Subject: [PATCH 035/190] drivers: firmware: xilinx: Switch to new family code
+ in zynqmp_pm_get_family_info()
+
+commit 3c48fb669dd1f81d9a4c9e8a11aed2dd4b310497 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Currently, the family code and subfamily code are derived from the
+PMC_TAP_IDCODE register. As a result, Versal, Versal NET, and Versal
+Gen2 share the same family code, and Versal NET and Versal Gen 2 share
+the same subfamily code, making it difficult to distinguish between
+platforms. Update zynqmp_pm_get_family_info() to use IDs derived from
+the compatible string instead of silicon ID codes derived from
+PMC_TAP_IDCODE register.
+
+Link: https://lore.kernel.org/lkml/20250701123851.1314531-4-jay.buddhabhatti@amd.com
+Signed-off-by: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+State: upstream (88fa7c8181bd5c5738eb22b0e144d5b1fef2ee20)
+Message-ID: <20250818115901.3692021-6-jay.buddhabhatti@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/crypto/xilinx/xilinx-ecdsa.c        |  3 +-
+ drivers/crypto/xilinx/xilinx-rsa.c          |  6 ++--
+ drivers/crypto/xilinx/zynqmp-aes-gcm.c      |  6 ++--
+ drivers/crypto/xilinx/zynqmp-rsa.c          |  3 +-
+ drivers/crypto/xilinx/zynqmp-sha.c          |  6 ++--
+ drivers/edac/xilinx_xilsem_edac.c           | 11 +++----
+ drivers/firmware/xilinx/zynqmp-core.c       | 35 ++++++---------------
+ drivers/firmware/xilinx/zynqmp-crypto.c     | 11 +++----
+ drivers/firmware/xilinx/zynqmp-pm.c         |  7 ++---
+ drivers/pinctrl/pinctrl-zynqmp.c            | 10 +++---
+ drivers/soc/xilinx/xlnx_event_manager.c     | 14 +++++----
+ drivers/soc/xilinx/zynqmp_power.c           | 10 +++---
+ include/linux/firmware/xlnx-zynqmp-secure.h |  2 --
+ include/linux/firmware/xlnx-zynqmp.h        | 16 ++--------
+ 14 files changed, 50 insertions(+), 90 deletions(-)
+
+diff --git a/drivers/crypto/xilinx/xilinx-ecdsa.c b/drivers/crypto/xilinx/xilinx-ecdsa.c
+index 3831449b25a2..b4e0711e5388 100644
+--- a/drivers/crypto/xilinx/xilinx-ecdsa.c
++++ b/drivers/crypto/xilinx/xilinx-ecdsa.c
+@@ -391,8 +391,7 @@ static struct xilinx_ecdsa_drv_ctx versal_ecdsa_drv_ctx[] = {
+ 
+ static struct xlnx_feature ecdsa_feature_map[] = {
+ 	{
+-		.family = VERSAL_FAMILY_CODE,
+-		.subfamily = VERSAL_SUB_FAMILY_CODE,
++		.family = PM_VERSAL_FAMILY_CODE,
+ 		.feature_id = XSECURE_API_ELLIPTIC_VALIDATE_KEY,
+ 		.data = &versal_ecdsa_drv_ctx,
+ 	},
+diff --git a/drivers/crypto/xilinx/xilinx-rsa.c b/drivers/crypto/xilinx/xilinx-rsa.c
+index accf43f5e065..c1212744eb35 100644
+--- a/drivers/crypto/xilinx/xilinx-rsa.c
++++ b/drivers/crypto/xilinx/xilinx-rsa.c
+@@ -482,14 +482,12 @@ static struct xilinx_rsa_drv_ctx versal_rsa_drv_ctx = {
+ 
+ static struct xlnx_feature rsa_feature_map[] = {
+ 	{
+-		.family = ZYNQMP_FAMILY_CODE,
+-		.subfamily = ALL_SUB_FAMILY_CODE,
++		.family = PM_ZYNQMP_FAMILY_CODE,
+ 		.feature_id = PM_SECURE_RSA,
+ 		.data = &zynqmp_rsa_drv_ctx,
+ 	},
+ 	{
+-		.family = VERSAL_FAMILY_CODE,
+-		.subfamily = VERSAL_SUB_FAMILY_CODE,
++		.family = PM_VERSAL_FAMILY_CODE,
+ 		.feature_id = XSECURE_API_RSA_PUBLIC_ENCRYPT,
+ 		.data = &versal_rsa_drv_ctx,
+ 	},
+diff --git a/drivers/crypto/xilinx/zynqmp-aes-gcm.c b/drivers/crypto/xilinx/zynqmp-aes-gcm.c
+index 68b47bddcad7..60e94f7f7a57 100644
+--- a/drivers/crypto/xilinx/zynqmp-aes-gcm.c
++++ b/drivers/crypto/xilinx/zynqmp-aes-gcm.c
+@@ -804,14 +804,12 @@ static struct xilinx_aead_drv_ctx versal_aes_drv_ctx = {
+ 
+ static struct xlnx_feature aes_feature_map[] = {
+ 	{
+-		.family = ZYNQMP_FAMILY_CODE,
+-		.subfamily = ALL_SUB_FAMILY_CODE,
++		.family = PM_ZYNQMP_FAMILY_CODE,
+ 		.feature_id = PM_SECURE_AES,
+ 		.data = &zynqmp_aes_drv_ctx,
+ 	},
+ 	{
+-		.family = VERSAL_FAMILY_CODE,
+-		.subfamily = VERSAL_SUB_FAMILY_CODE,
++		.family = PM_VERSAL_FAMILY_CODE,
+ 		.feature_id = XSECURE_API_AES_OP_INIT,
+ 		.data = &versal_aes_drv_ctx,
+ 	},
+diff --git a/drivers/crypto/xilinx/zynqmp-rsa.c b/drivers/crypto/xilinx/zynqmp-rsa.c
+index 4ed542354de7..93d1a57261bc 100644
+--- a/drivers/crypto/xilinx/zynqmp-rsa.c
++++ b/drivers/crypto/xilinx/zynqmp-rsa.c
+@@ -172,8 +172,7 @@ static struct skcipher_alg zynqmp_alg = {
+ 
+ static struct xlnx_feature rsa_feature_map[] = {
+ 	{
+-		.family = ZYNQMP_FAMILY_CODE,
+-		.subfamily = ALL_SUB_FAMILY_CODE,
++		.family = PM_ZYNQMP_FAMILY_CODE,
+ 		.feature_id = PM_SECURE_RSA,
+ 		.data = &zynqmp_alg,
+ 	},
+diff --git a/drivers/crypto/xilinx/zynqmp-sha.c b/drivers/crypto/xilinx/zynqmp-sha.c
+index 05ef9cb8a096..cfef19bcf2bd 100644
+--- a/drivers/crypto/xilinx/zynqmp-sha.c
++++ b/drivers/crypto/xilinx/zynqmp-sha.c
+@@ -347,14 +347,12 @@ static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
+ 
+ static struct xlnx_feature sha_feature_map[] = {
+ 	{
+-		.family = ZYNQMP_FAMILY_CODE,
+-		.subfamily = ALL_SUB_FAMILY_CODE,
++		.family = PM_ZYNQMP_FAMILY_CODE,
+ 		.feature_id = PM_SECURE_SHA,
+ 		.data = &zynqmp_sha3_drv_ctx,
+ 	},
+ 	{
+-		.family = VERSAL_FAMILY_CODE,
+-		.subfamily = VERSAL_SUB_FAMILY_CODE,
++		.family = PM_VERSAL_FAMILY_CODE,
+ 		.feature_id = XSECURE_API_SHA3_UPDATE,
+ 		.data = &versal_sha3_drv_ctx,
+ 	},
+diff --git a/drivers/edac/xilinx_xilsem_edac.c b/drivers/edac/xilinx_xilsem_edac.c
+index 13522343c5de..4d76eee88c92 100644
+--- a/drivers/edac/xilinx_xilsem_edac.c
++++ b/drivers/edac/xilinx_xilsem_edac.c
+@@ -1202,7 +1202,6 @@ static int xsem_edac_probe(struct platform_device *pdev)
+ 	struct xsem_edac_priv *priv;
+ 	void __iomem *plmrtca_baseaddr;
+ 	struct edac_device_ctl_info *dci;
+-	u32 device_sub_family_code;
+ 	u32 family_code;
+ 	int rc;
+ 
+@@ -1238,26 +1237,26 @@ static int xsem_edac_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	priv->slr_info = devm_kzalloc(&pdev->dev, sizeof(struct xsem_ssit_status), GFP_KERNEL);
+-	rc = zynqmp_pm_get_family_info(&family_code, &device_sub_family_code);
++	rc = zynqmp_pm_get_family_info(&family_code);
+ 	if (rc) {
+ 		if (rc == -ENODEV)
+ 			rc = -EPROBE_DEFER;
+ 		goto free_edac_dev;
+ 	}
+ 
+-	if (device_sub_family_code == VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE) {
++	if (family_code == PM_VERSAL_NET_FAMILY_CODE) {
+ 		priv->sw_event_node_id = VERSAL_NET_EVENT_ERROR_SW_ERR;
+ 		priv->cram_ce_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE;
+ 		priv->cram_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE;
+ 		priv->npi_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE;
+-	} else if (device_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX) {
++	} else if (family_code == PM_VERSAL_FAMILY_CODE) {
+ 		priv->sw_event_node_id = VERSAL_EVENT_ERROR_SW_ERR;
+ 		priv->cram_ce_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5;
+ 		priv->cram_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6;
+ 		priv->npi_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7;
+ 	} else {
+-		edac_printk(KERN_ERR, EDAC_DEVICE, "Invalid Device Sub family code %d\n",
+-			    device_sub_family_code);
++		edac_printk(KERN_ERR, EDAC_DEVICE, "Invalid Device family code %d\n",
++			    family_code);
+ 	}
+ 	rc = xlnx_register_event(PM_NOTIFY_CB, priv->sw_event_node_id,
+ 				 priv->cram_ce_mask | priv->cram_ue_mask | priv->npi_ue_mask,
+diff --git a/drivers/firmware/xilinx/zynqmp-core.c b/drivers/firmware/xilinx/zynqmp-core.c
+index bccd6a3d87f2..9a8c3f82e85d 100644
+--- a/drivers/firmware/xilinx/zynqmp-core.c
++++ b/drivers/firmware/xilinx/zynqmp-core.c
+@@ -773,34 +773,18 @@ static int get_set_conduit_method(struct device_node *np)
+ /**
+  * zynqmp_pm_get_family_info() - Get family info of platform
+  * @family:	Returned family code value
+- * @subfamily:	Returned sub-family code value
+  *
+  * Return: Returns status, either success or error+reason
+  */
+-int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
++int zynqmp_pm_get_family_info(u32 *family)
+ {
+-	u32 ret_payload[PAYLOAD_ARG_CNT];
+-	u32 idcode;
+-	static u32 pm_family_code;
+-	static u32 pm_sub_family_code;
+-	int ret;
+-
+-	/* Check is family or sub-family code already received */
+-	if (pm_family_code && pm_sub_family_code) {
+-		*family = pm_family_code;
+-		*subfamily = pm_sub_family_code;
+-		return 0;
+-	}
++	if (!active_platform_fw_data)
++		return -ENODEV;
+ 
+-	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, ret_payload, 0);
+-	if (ret < 0)
+-		return ret;
++	if (!family)
++		return -EINVAL;
+ 
+-	idcode = ret_payload[1];
+-	pm_family_code = FIELD_GET(FAMILY_CODE_MASK, idcode);
+-	pm_sub_family_code = FIELD_GET(SUB_FAMILY_CODE_MASK, idcode);
+-	*family = pm_family_code;
+-	*subfamily = pm_sub_family_code;
++	*family = active_platform_fw_data->family_code;
+ 
+ 	return 0;
+ }
+@@ -813,7 +797,6 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
+ 	u32 pm_api_version;
+ 	u32 pm_tz_version;
+ 	u32 pm_family_code;
+-	u32 pm_sub_family_code;
+ 	int ret;
+ 
+ 	ret = get_set_conduit_method(dev->of_node);
+@@ -856,8 +839,8 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
+ 	pr_info("%s Platform Management API v%d.%d\n", __func__,
+ 		pm_api_version >> 16, pm_api_version & 0xFFFF);
+ 
+-	/* Get the Family code and sub family code of platform */
+-	ret = zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
++	/* Get the Family code of platform */
++	ret = zynqmp_pm_get_family_info(&pm_family_code);
+ 	if (ret < 0)
+ 		return ret;
+ 
+@@ -904,7 +887,7 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
+ 
+ 	zynqmp_pm_api_debugfs_init();
+ 
+-	if (pm_family_code == VERSAL_FAMILY_CODE) {
++	if (pm_family_code != PM_ZYNQMP_FAMILY_CODE) {
+ 		em_dev = platform_device_register_data(&pdev->dev, "xlnx_event_manager",
+ 						       -1, NULL, 0);
+ 		if (IS_ERR(em_dev))
+diff --git a/drivers/firmware/xilinx/zynqmp-crypto.c b/drivers/firmware/xilinx/zynqmp-crypto.c
+index f9c6059a0831..24b9f4606f17 100644
+--- a/drivers/firmware/xilinx/zynqmp-crypto.c
++++ b/drivers/firmware/xilinx/zynqmp-crypto.c
+@@ -398,7 +398,6 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
+ 	struct xlnx_feature *feature;
+ 	u32 v;
+ 	u32 pm_family_code;
+-	u32 pm_sub_family_code;
+ 	int ret;
+ 
+ 	ret = zynqmp_pm_get_api_version(&v);
+@@ -406,17 +405,15 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
+ 		return ERR_PTR(ret);
+ 
+ 	/* Get the Family code and sub family code of platform */
+-	ret = zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
++	ret = zynqmp_pm_get_family_info(&pm_family_code);
+ 	if (ret < 0)
+ 		return ERR_PTR(ret);
+ 
+ 	feature = feature_map;
+ 	for (; feature->family; feature++) {
+-		if (feature->family == pm_family_code &&
+-		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
+-		     pm_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX)) {
+-			if (feature->family == ZYNQMP_FAMILY_CODE ||
+-			    feature->family == VERSAL_FAMILY_CODE) {
++		if (feature->family == pm_family_code) {
++			if (feature->family == PM_ZYNQMP_FAMILY_CODE ||
++			    feature->family == PM_VERSAL_FAMILY_CODE) {
+ 				ret = zynqmp_pm_feature(feature->feature_id);
+ 				if (ret < 0)
+ 					return ERR_PTR(ret);
+diff --git a/drivers/firmware/xilinx/zynqmp-pm.c b/drivers/firmware/xilinx/zynqmp-pm.c
+index b04241dab52d..d4d53c8316c6 100644
+--- a/drivers/firmware/xilinx/zynqmp-pm.c
++++ b/drivers/firmware/xilinx/zynqmp-pm.c
+@@ -703,15 +703,14 @@ int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
+ 				 u32 value)
+ {
+ 	u32 pm_family_code;
+-	u32 pm_sub_family_code;
+ 	int ret;
+ 
+-	/* Get the Family code and sub family code of platform */
+-	ret = zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
++	/* Get the Family code of platform */
++	ret = zynqmp_pm_get_family_info(&pm_family_code);
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	if (pm_family_code == ZYNQMP_FAMILY_CODE &&
++	if (pm_family_code == PM_ZYNQMP_FAMILY_CODE &&
+ 	    param == PM_PINCTRL_CONFIG_TRI_STATE) {
+ 		ret = zynqmp_pm_feature(PM_PINCTRL_CONFIG_PARAM_SET);
+ 		if (ret < PM_PINCTRL_PARAM_SET_VERSION) {
+diff --git a/drivers/pinctrl/pinctrl-zynqmp.c b/drivers/pinctrl/pinctrl-zynqmp.c
+index ddaf19920710..fab27d51a9ce 100644
+--- a/drivers/pinctrl/pinctrl-zynqmp.c
++++ b/drivers/pinctrl/pinctrl-zynqmp.c
+@@ -2,7 +2,8 @@
+ /*
+  * ZynqMP pin controller
+  *
+- * Copyright (C) 2020, 2021 Xilinx, Inc.
++ * Copyright (C), 2020 - 2022 Xilinx, Inc.
++ * Copyright (C), 2022 - 2025 Advanced Micro Devices, Inc.
+  *
+  * Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
+  * Rajan Vaja <rajan.vaja@xilinx.com>
+@@ -104,7 +105,6 @@ struct zynqmp_pctrl_group {
+ 
+ static struct pinctrl_desc zynqmp_desc;
+ static u32 family_code;
+-static u32 sub_family_code;
+ 
+ static int zynqmp_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
+ {
+@@ -609,7 +609,7 @@ static int zynqmp_pinctrl_prepare_func_groups(struct device *dev, u32 fid,
+ 				return -ENOMEM;
+ 
+ 			for (pin = 0; pin < groups[resp[i]].npins; pin++) {
+-				if (family_code == ZYNQMP_FAMILY_CODE)
++				if (family_code == PM_ZYNQMP_FAMILY_CODE)
+ 					__set_bit(groups[resp[i]].pins[pin], used_pins);
+ 				else
+ 					__set_bit((u8)groups[resp[i]].pins[pin] - 1, used_pins);
+@@ -1001,11 +1001,11 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
+ 	if (!pctrl)
+ 		return -ENOMEM;
+ 
+-	ret = zynqmp_pm_get_family_info(&family_code, &sub_family_code);
++	ret = zynqmp_pm_get_family_info(&family_code);
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	if (family_code == ZYNQMP_FAMILY_CODE) {
++	if (family_code == PM_ZYNQMP_FAMILY_CODE) {
+ 		ret = zynqmp_pinctrl_prepare_pin_desc(&pdev->dev, &zynqmp_desc.pins,
+ 						      &zynqmp_desc.npins);
+ 	} else {
+diff --git a/drivers/soc/xilinx/xlnx_event_manager.c b/drivers/soc/xilinx/xlnx_event_manager.c
+index 6074d59c03f5..ad57372b0a67 100644
+--- a/drivers/soc/xilinx/xlnx_event_manager.c
++++ b/drivers/soc/xilinx/xlnx_event_manager.c
+@@ -80,18 +80,18 @@ struct registered_event_data {
+ 
+ static bool xlnx_is_error_event(const u32 node_id)
+ {
+-	u32 pm_family_code, pm_sub_family_code;
++	u32 pm_family_code;
+ 
+-	zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
++	zynqmp_pm_get_family_info(&pm_family_code);
+ 
+-	if (pm_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX) {
++	if (pm_family_code == PM_VERSAL_FAMILY_CODE) {
+ 		if (node_id == VERSAL_EVENT_ERROR_PMC_ERR1 ||
+ 		    node_id == VERSAL_EVENT_ERROR_PMC_ERR2 ||
+ 		    node_id == VERSAL_EVENT_ERROR_PSM_ERR1 ||
+ 		    node_id == VERSAL_EVENT_ERROR_PSM_ERR2 ||
+ 		    node_id == VERSAL_EVENT_ERROR_SW_ERR)
+ 			return true;
+-	} else {
++	} else if (pm_family_code == PM_VERSAL_NET_FAMILY_CODE) {
+ 		if (node_id == VERSAL_NET_EVENT_ERROR_PMC_ERR1 ||
+ 		    node_id == VERSAL_NET_EVENT_ERROR_PMC_ERR2 ||
+ 		    node_id == VERSAL_NET_EVENT_ERROR_PMC_ERR3 ||
+@@ -99,8 +99,10 @@ static bool xlnx_is_error_event(const u32 node_id)
+ 		    node_id == VERSAL_NET_EVENT_ERROR_PSM_ERR2 ||
+ 		    node_id == VERSAL_NET_EVENT_ERROR_PSM_ERR3 ||
+ 		    node_id == VERSAL_NET_EVENT_ERROR_PSM_ERR4 ||
+-		    node_id == VERSAL_NET_EVENT_ERROR_SW_ERR ||
+-		    node_id == VERSAL2_EVENT_ERROR_PMC_ERR1 ||
++		    node_id == VERSAL_NET_EVENT_ERROR_SW_ERR)
++			return true;
++	} else if (pm_family_code == PM_VERSAL2_FAMILY_CODE) {
++		if (node_id == VERSAL2_EVENT_ERROR_PMC_ERR1 ||
+ 		    node_id == VERSAL2_EVENT_ERROR_PMC_ERR2 ||
+ 		    node_id == VERSAL2_EVENT_ERROR_PMC_ERR3 ||
+ 		    node_id == VERSAL2_EVENT_ERROR_LPDSLCR_ERR1 ||
+diff --git a/drivers/soc/xilinx/zynqmp_power.c b/drivers/soc/xilinx/zynqmp_power.c
+index 5f4d12aba452..b29de714b096 100644
+--- a/drivers/soc/xilinx/zynqmp_power.c
++++ b/drivers/soc/xilinx/zynqmp_power.c
+@@ -2,7 +2,8 @@
+ /*
+  * Xilinx Zynq MPSoC Power Management
+  *
+- *  Copyright (C) 2014-2019 Xilinx, Inc.
++ *  Copyright (C), 2014 - 2022 Xilinx, Inc.
++ *  Copyright (C), 2022 - 2025 Advanced Micro Devices, Inc.
+  *
+  *  Davorin Mista <davorin.mista@aggios.com>
+  *  Jolly Shah <jollys@xilinx.com>
+@@ -285,7 +286,7 @@ static int register_event(struct device *dev, const enum pm_api_cb_id cb_type, c
+ static int zynqmp_pm_probe(struct platform_device *pdev)
+ {
+ 	int ret, irq;
+-	u32 pm_api_version, pm_family_code, pm_sub_family_code, node_id;
++	u32 pm_api_version, pm_family_code, node_id;
+ 	struct mbox_client *client;
+ 
+ 	ret = zynqmp_pm_get_api_version(&pm_api_version);
+@@ -315,11 +316,12 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
+ 		INIT_WORK(&zynqmp_pm_init_suspend_work->callback_work,
+ 			  zynqmp_pm_init_suspend_work_fn);
+ 
+-		ret = zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
++		ret = zynqmp_pm_get_family_info(&pm_family_code);
+ 		if (ret < 0)
+ 			return ret;
+ 
+-		if (pm_sub_family_code == VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE)
++		if ((pm_family_code == PM_VERSAL_NET_FAMILY_CODE) ||
++		    (pm_family_code == PM_VERSAL2_FAMILY_CODE))
+ 			node_id = PM_DEV_ACPU_0_0;
+ 		else
+ 			node_id = PM_DEV_ACPU_0;
+diff --git a/include/linux/firmware/xlnx-zynqmp-secure.h b/include/linux/firmware/xlnx-zynqmp-secure.h
+index 434040e3e94d..f3d5db8f113e 100644
+--- a/include/linux/firmware/xlnx-zynqmp-secure.h
++++ b/include/linux/firmware/xlnx-zynqmp-secure.h
+@@ -33,13 +33,11 @@
+ /**
+  * struct xlnx_feature - Feature data
+  * @family:	Family code of platform
+- * @subfamily:	Subfamily code of platform
+  * @feature_id:	Feature id of module
+  * @data:	Collection of all supported platform data
+  */
+ struct xlnx_feature {
+ 	u32 family;
+-	u32 subfamily;
+ 	u32 feature_id;
+ 	void *data;
+ };
+diff --git a/include/linux/firmware/xlnx-zynqmp.h b/include/linux/firmware/xlnx-zynqmp.h
+index 125b8644a735..f2e403a041c6 100644
+--- a/include/linux/firmware/xlnx-zynqmp.h
++++ b/include/linux/firmware/xlnx-zynqmp.h
+@@ -57,24 +57,12 @@
+ 
+ #define PM_PINCTRL_PARAM_SET_VERSION	2
+ 
+-#define ZYNQMP_FAMILY_CODE 0x23
+-#define VERSAL_FAMILY_CODE 0x26
+-
+-/* When all subfamily of platform need to support */
+-#define ALL_SUB_FAMILY_CODE		0x00
+-#define VERSAL_SUB_FAMILY_CODE		0x01
+-#define VERSAL_SUB_FAMILY_CODE_MAX	0x04
+-#define VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE	0x06
+-
+ /* Family codes */
+ #define PM_ZYNQMP_FAMILY_CODE 0x1 /* ZynqMP family code */
+ #define PM_VERSAL_FAMILY_CODE 0x2 /* Versal family code */
+ #define PM_VERSAL_NET_FAMILY_CODE 0x3 /* Versal NET family code */
+ #define PM_VERSAL2_FAMILY_CODE 0x4 /* Versal Gen 2 family code */
+ 
+-#define FAMILY_CODE_MASK	GENMASK(27, 21)
+-#define SUB_FAMILY_CODE_MASK	GENMASK(20, 18)
+-
+ #define API_ID_MASK		GENMASK(7, 0)
+ #define MODULE_ID_MASK		GENMASK(11, 8)
+ #define PLM_MODULE_ID_MASK	GENMASK(15, 8)
+@@ -613,7 +601,7 @@ int zynqmp_firmware_pm_sysfs_entry(struct platform_device *pdev);
+ #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
+ int zynqmp_pm_get_api_version(u32 *version);
+ int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
+-int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily);
++int zynqmp_pm_get_family_info(u32 *family);
+ int zynqmp_pm_get_trustzone_version(u32 *version);
+ int zynqmp_pm_get_sip_svc_version(u32 *version);
+ int zynqmp_pm_load_pdi_word_swap(const u64 address, u64 *swapped_address);
+@@ -702,7 +690,7 @@ static inline int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
+ 	return -ENODEV;
+ }
+ 
+-static inline int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
++static inline int zynqmp_pm_get_family_info(u32 *family)
+ {
+ 	return -ENODEV;
+ }
+-- 
+2.43.0
+

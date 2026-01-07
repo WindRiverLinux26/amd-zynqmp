@@ -1,0 +1,180 @@
+From 9358cf205530ab16cf11b9dee031d609427b7bc9 Mon Sep 17 00:00:00 2001
+From: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Date: Fri, 12 Sep 2025 05:19:48 -0700
+Subject: [PATCH 099/190] firmware: xilinx: Add support to clear TF-A PM state
+
+commit 559626d3140b8f6c485043042fdb9918d52fc421 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Currently, during a kexec restart, only the kernel is reloaded, while the
+TF-A specific data remain unchanged. This leads to a mismatch between the
+kernel state and the TF-A firmware state like SGI number and shutdown
+scope variable.
+
+To resolve this, the TF_A_CLEAR_PM_STATE PM API is introduced to clear
+TF-A-specific state during kexec. On a graceful reboot, this API is
+triggered by zynqmp_firmware_shutdown(), while in a crash kernel scenario,
+it is invoked by zynqmp_firmware_probe() in the reloaded kernel.
+
+This support currently applies to Versal and Versal-Net platforms only.
+
+Signed-off-by: Jay Buddhabhatti <jay.buddhabhatti@amd.com>
+Acked-by: Senthil Nathan Thangaraj <senthilnathan.thangaraj@amd.com>
+Message-ID: <20250912121950.1104451-2-jay.buddhabhatti@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/firmware/xilinx/zynqmp-core.c | 51 +++++++++++++++++++++++++++
+ drivers/firmware/xilinx/zynqmp-pm.c   | 12 +++++++
+ include/linux/firmware/xlnx-zynqmp.h  |  8 +++++
+ 3 files changed, 71 insertions(+)
+
+diff --git a/drivers/firmware/xilinx/zynqmp-core.c b/drivers/firmware/xilinx/zynqmp-core.c
+index 076c482a3000..a287f14be26a 100644
+--- a/drivers/firmware/xilinx/zynqmp-core.c
++++ b/drivers/firmware/xilinx/zynqmp-core.c
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include <linux/arm-smccc.h>
++#include <linux/crash_dump.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/hashtable.h>
+ #include <linux/mfd/core.h>
+@@ -757,6 +758,44 @@ int zynqmp_pm_get_family_info(u32 *family)
+ }
+ EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
+ 
++/**
++ * zynqmp_clear_pm_state() - Clear subsystem state.
++ * @dev: struct device
++ *
++ * Clears PM specific data in TF-A.
++ *
++ * Return: Returns status, either success or error+reason
++ */
++static int zynqmp_clear_pm_state(struct device *dev)
++{
++	u32 pm_family_code;
++	int ret;
++
++	/* Get the Family code of platform */
++	ret = zynqmp_pm_get_family_info(&pm_family_code);
++	if (ret < 0)
++		return ret;
++
++	/* Supporting on Versal and Versal Net platforms only */
++	if (pm_family_code == PM_VERSAL_FAMILY_CODE ||
++	    pm_family_code == PM_VERSAL_NET_FAMILY_CODE) {
++		/* Check if the TF-A supports the TF_A_CLEAR_PM_STATE */
++		ret = do_feature_check_call(TF_A_CLEAR_PM_STATE);
++		if ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_1) {
++			/* Clear PM specific data in TF-A */
++			ret = zynqmp_pm_clear_tfa_state();
++			if (ret)
++				dev_err(dev,
++					"Failed to clear TF-A specific subsystem state: %d\n", ret);
++		} else {
++			dev_warn(dev, "TF_A_CLEAR_PM_STATE is not supported in TF-A: %d\n", ret);
++			ret = 0;
++		}
++	}
++
++	return ret;
++}
++
+ static int zynqmp_firmware_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -811,6 +850,12 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
+ 	if (ret < 0)
+ 		return ret;
+ 
++	if (is_kdump_kernel()) {
++		ret = zynqmp_clear_pm_state(dev);
++		if (ret)
++			return ret;
++	}
++
+ 	/* Check trustzone version number */
+ 	ret = zynqmp_pm_get_trustzone_version(&pm_tz_version);
+ 	if (ret)
+@@ -864,6 +909,11 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
+ 	return of_platform_populate(dev->of_node, NULL, NULL, dev);
+ }
+ 
++static void zynqmp_firmware_shutdown(struct platform_device *pdev)
++{
++	zynqmp_clear_pm_state(&pdev->dev);
++}
++
+ static void zynqmp_firmware_remove(struct platform_device *pdev)
+ {
+ 	struct pm_api_feature_data *feature_data;
+@@ -937,5 +987,6 @@ static struct platform_driver zynqmp_firmware_driver = {
+ 	},
+ 	.probe = zynqmp_firmware_probe,
+ 	.remove_new = zynqmp_firmware_remove,
++	.shutdown = zynqmp_firmware_shutdown,
+ };
+ module_platform_driver(zynqmp_firmware_driver);
+diff --git a/drivers/firmware/xilinx/zynqmp-pm.c b/drivers/firmware/xilinx/zynqmp-pm.c
+index d4d53c8316c6..9c7e09d02753 100644
+--- a/drivers/firmware/xilinx/zynqmp-pm.c
++++ b/drivers/firmware/xilinx/zynqmp-pm.c
+@@ -762,6 +762,18 @@ int zynqmp_pm_bootmode_write(u32 ps_mode)
+ }
+ EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
+ 
++/**
++ * zynqmp_pm_clear_tfa_state() - PM call to clear trusted-firmware-a state when
++ * new kernel is being loaded, such as during kexec.
++ *
++ * Return: Returns status, either success or error+reason
++ */
++int zynqmp_pm_clear_tfa_state(void)
++{
++	return zynqmp_pm_invoke_fn(TF_A_CLEAR_PM_STATE, NULL, 0);
++}
++EXPORT_SYMBOL_GPL(zynqmp_pm_clear_tfa_state);
++
+ /**
+  * zynqmp_pm_init_finalize() - PM call to inform firmware that the caller
+  *			       master has initialized its own power management
+diff --git a/include/linux/firmware/xlnx-zynqmp.h b/include/linux/firmware/xlnx-zynqmp.h
+index 208d41217675..bde10bff9724 100644
+--- a/include/linux/firmware/xlnx-zynqmp.h
++++ b/include/linux/firmware/xlnx-zynqmp.h
+@@ -71,6 +71,7 @@
+ #define FIRMWARE_VERSION_MASK		0xFFFFU
+ 
+ /* ATF only commands */
++#define TF_A_CLEAR_PM_STATE		0xa05
+ #define TF_A_PM_REGISTER_SGI		0xa04
+ #define PM_GET_TRUSTZONE_VERSION	0xa03
+ #define PM_SET_SUSPEND_MODE		0xa02
+@@ -678,6 +679,7 @@ int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
+ int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
+ int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
+ int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high, u32 addr_low);
++int zynqmp_pm_clear_tfa_state(void);
+ #else
+ static inline int zynqmp_pm_get_api_version(u32 *version)
+ {
+@@ -1025,6 +1027,12 @@ static inline int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high,
+ {
+ 	return -ENODEV;
+ }
++
++static inline int zynqmp_pm_clear_tfa_state(void)
++{
++	return -ENODEV;
++}
++
+ #endif
+ 
+ #endif /* __FIRMWARE_ZYNQMP_H__ */
+-- 
+2.43.0
+

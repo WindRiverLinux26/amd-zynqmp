@@ -1,0 +1,87 @@
+From 62d8ccf98cdb0c9dd6536f15443ef9579dd72a4b Mon Sep 17 00:00:00 2001
+From: Tanmay Shah <tanmay.shah@amd.com>
+Date: Thu, 14 Aug 2025 21:23:35 -0700
+Subject: [PATCH 029/190] remoteproc: xlnx: Add shutdown callback
+
+commit 4868f9a82d6ee1550593201fc9a5a2d2adbde51a from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+In case of kexec call, each driver's shutdown callback is called. Handle
+this call for rproc driver and shutdown/detach each core that was powered
+on before. This is needed for proper Life Cycle Management of remote
+processor. Otherwise on next linux boot, remote processor can't be
+started due to bad refcount of power-domain managed by platform
+management controller.
+
+Signed-off-by: Tanmay Shah <tanmay.shah@amd.com>
+Link: https://lore.kernel.org/r/20250620195728.3216935-1-tanmay.shah@amd.com
+Signed-off-by: Mathieu Poirier <mathieu.poirier@linaro.org>
+State: upstream (209be2857bcc4bae88ef1b0981da2db99f84dbb5)
+Message-ID: <20250815042334.2622204-3-tanmay.shah@amd.com>
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/remoteproc/xlnx_r5_remoteproc.c | 40 +++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/drivers/remoteproc/xlnx_r5_remoteproc.c b/drivers/remoteproc/xlnx_r5_remoteproc.c
+index 967c2f74e2c8..73c14bb9259e 100644
+--- a/drivers/remoteproc/xlnx_r5_remoteproc.c
++++ b/drivers/remoteproc/xlnx_r5_remoteproc.c
+@@ -1459,6 +1459,45 @@ static void zynqmp_r5_cluster_exit(void *data)
+ 	platform_set_drvdata(pdev, NULL);
+ }
+ 
++/*
++ * zynqmp_r5_remoteproc_shutdown()
++ * Follow shutdown sequence in case of kexec call.
++ *
++ * @pdev: domain platform device for cluster
++ *
++ * Return: None.
++ */
++static void zynqmp_r5_remoteproc_shutdown(struct platform_device *pdev)
++{
++	const char *rproc_state_str = NULL;
++	struct zynqmp_r5_cluster *cluster;
++	struct zynqmp_r5_core *r5_core;
++	struct rproc *rproc;
++	int i, ret = 0;
++
++	cluster = platform_get_drvdata(pdev);
++
++	for (i = 0; i < cluster->core_count; i++) {
++		r5_core = cluster->r5_cores[i];
++		rproc = r5_core->rproc;
++
++		if (rproc->state == RPROC_RUNNING) {
++			ret = rproc_shutdown(rproc);
++			rproc_state_str = "shutdown";
++		} else if (rproc->state == RPROC_ATTACHED) {
++			ret = rproc_detach(rproc);
++			rproc_state_str = "detach";
++		} else {
++			ret = 0;
++		}
++
++		if (ret) {
++			dev_err(cluster->dev, "failed to %s rproc %d\n",
++				rproc_state_str, rproc->index);
++		}
++	}
++}
++
+ /*
+  * zynqmp_r5_remoteproc_probe()
+  * parse device-tree, initialize hardware and allocate required resources
+@@ -1520,6 +1559,7 @@ static struct platform_driver zynqmp_r5_remoteproc_driver = {
+ 		.name = "zynqmp_r5_remoteproc",
+ 		.of_match_table = zynqmp_r5_remoteproc_match,
+ 	},
++	.shutdown = zynqmp_r5_remoteproc_shutdown,
+ };
+ module_platform_driver(zynqmp_r5_remoteproc_driver);
+ 
+-- 
+2.43.0
+

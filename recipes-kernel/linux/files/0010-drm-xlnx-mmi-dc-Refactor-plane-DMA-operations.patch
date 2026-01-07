@@ -1,0 +1,426 @@
+From 3b4c9090aa873fdc36064ac87f67a43202e5816f Mon Sep 17 00:00:00 2001
+From: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Date: Fri, 18 Jul 2025 13:41:34 -0700
+Subject: [PATCH 010/190] drm: xlnx: mmi-dc: Refactor plane DMA operations
+
+commit b80b5b2d473c6fc138ff121e5a779ba1831b92cf from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Introduce MMI DC plane DMA interface. Simplify DC plane DMA operations.
+This DMA interface will be used by the cursor plane as well.
+
+Signed-off-by: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Tested-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20250718204135.2915393-4-anatoliy.klymenko@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/xlnx/Makefile             |   3 +-
+ drivers/gpu/drm/xlnx/mmi_dc_dma.c         | 161 ++++++++++++++++++++++
+ drivers/gpu/drm/xlnx/mmi_dc_dma.h         |  27 ++++
+ drivers/gpu/drm/xlnx/mmi_dc_video_plane.c |  98 ++++---------
+ 4 files changed, 219 insertions(+), 70 deletions(-)
+ create mode 100644 drivers/gpu/drm/xlnx/mmi_dc_dma.c
+ create mode 100644 drivers/gpu/drm/xlnx/mmi_dc_dma.h
+
+diff --git a/drivers/gpu/drm/xlnx/Makefile b/drivers/gpu/drm/xlnx/Makefile
+index 98ca11147352..9819fe86b23b 100644
+--- a/drivers/gpu/drm/xlnx/Makefile
++++ b/drivers/gpu/drm/xlnx/Makefile
+@@ -1,4 +1,5 @@
+-mmi-dc-y := mmi_dc.o mmi_dc_kms.o mmi_dc_plane.o mmi_dc_video_plane.o
++mmi-dc-y := mmi_dc.o mmi_dc_dma.o mmi_dc_kms.o mmi_dc_plane.o \
++	    mmi_dc_video_plane.o
+ obj-$(CONFIG_DRM_AMD_MMI_DC) += mmi-dc.o
+ zynqmp-dpsub-y := zynqmp_disp.o zynqmp_dpsub.o zynqmp_dp.o zynqmp_kms.o
+ zynqmp-dpsub-$(CONFIG_DRM_ZYNQMP_DPSUB_AUDIO) += zynqmp_dp_audio.o
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_dma.c b/drivers/gpu/drm/xlnx/mmi_dc_dma.c
+new file mode 100644
+index 000000000000..87459be09467
+--- /dev/null
++++ b/drivers/gpu/drm/xlnx/mmi_dc_dma.c
+@@ -0,0 +1,161 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * DMA Interface for Multimedia Integrated Display Controller Driver
++ *
++ * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
++ */
++
++#include "mmi_dc_dma.h"
++
++#include <linux/dmaengine.h>
++#include <linux/dma/xilinx_dpdma.h>
++
++/**
++ * struct mmi_dc_dma_chan - DC DMA channel
++ * @dev: DMA channel client device
++ * @dma_chan: DMA engine channel
++ * @xt: interleaved DMA transfer template
++ */
++struct mmi_dc_dma_chan {
++	struct device			*dev;
++	struct dma_chan			*dma_chan;
++	struct dma_interleaved_template	*xt;
++};
++
++/**
++ * mmi_dc_dma_request_channel - Request named DMA channel
++ * @dev: the MMI DC device
++ * @name: requested DMA channel name
++ *
++ * Return: Managed pointer to the new instance of MMI DC DMA channel on
++ *	   success or error pointer otherwise.
++ */
++struct mmi_dc_dma_chan *mmi_dc_dma_request_channel(struct device *dev,
++						   const char *name)
++{
++	struct mmi_dc_dma_chan *chan = devm_kzalloc(dev, sizeof(*chan),
++						    GFP_KERNEL);
++	size_t xt_alloc_size;
++
++	if (!chan)
++		return ERR_PTR(-ENOMEM);
++
++	chan->dev = dev;
++	chan->dma_chan = dma_request_chan(dev, name);
++
++	if (IS_ERR(chan->dma_chan))
++		return (void *)chan->dma_chan;
++
++	xt_alloc_size = sizeof(struct dma_interleaved_template) +
++			sizeof(struct data_chunk);
++	chan->xt = devm_kzalloc(dev, xt_alloc_size, GFP_KERNEL);
++	if (!chan->xt)
++		return ERR_PTR(-ENOMEM);
++
++	chan->xt->dir = DMA_MEM_TO_DEV;
++	chan->xt->src_sgl = true;
++	chan->xt->frame_size = 1;
++
++	return chan;
++}
++
++/**
++ * mmi_dc_dma_release_channel - Release DMA channel
++ * @chan: the MMI DC DMA channel to release
++ */
++void mmi_dc_dma_release_channel(struct mmi_dc_dma_chan *chan)
++{
++	if (WARN_ON(!chan))
++		return;
++
++	dmaengine_terminate_sync(chan->dma_chan);
++	dma_release_channel(chan->dma_chan);
++}
++
++/**
++ * mmi_dc_dma_copy_align - Request the DMA device copy alignment
++ * @chan: the MMI DC DMA channel
++ *
++ * Return: DMA device data buffer alignment constraint.
++ */
++unsigned int mmi_dc_dma_copy_align(struct mmi_dc_dma_chan *chan)
++{
++	if (WARN_ON(!chan))
++		return 0;
++
++	return 1 << chan->dma_chan->device->copy_align;
++}
++
++/**
++ * mmi_dc_dma_config_channel - Configure DMA channel
++ * @chan: the MMI DC DMA channel to configure
++ * @target_addr: in-device target DMA address
++ * @video_group: true if the channel belongs to a video group
++ */
++void mmi_dc_dma_config_channel(struct mmi_dc_dma_chan *chan,
++			       dma_addr_t target_addr, bool video_group)
++{
++	struct xilinx_dpdma_peripheral_config platform_config = {
++		.video_group = video_group,
++	};
++	struct dma_slave_config dma_config = {
++		.direction = DMA_MEM_TO_DEV,
++		.dst_addr = target_addr,
++		.peripheral_config = &platform_config,
++		.peripheral_size = sizeof(platform_config),
++	};
++
++	if (WARN_ON(!chan))
++		return;
++
++	dmaengine_slave_config(chan->dma_chan, &dma_config);
++}
++
++/**
++ * mmi_dc_dma_start_transfer - Start the DMA transfer
++ * @chan: the MMI DC DMA channel
++ * @buffer_addr: frame buffer data DMA address
++ * @line_size: size of the active pixel line in bytes
++ * @line_stride: distance between two consecutive pixel lines in bytes
++ * @num_lines: the number of pixel lines in the buffer
++ * @auto_repeat: true if DMA transfer should loop after completion
++ */
++void mmi_dc_dma_start_transfer(struct mmi_dc_dma_chan *chan,
++			       dma_addr_t buffer_addr, size_t line_size,
++			       size_t line_stride, size_t num_lines,
++			       bool auto_repeat)
++{
++	struct dma_async_tx_descriptor *desc;
++	unsigned int flags = DMA_CTRL_ACK;
++
++	if (WARN_ON(!chan))
++		return;
++
++	if (auto_repeat)
++		flags |= DMA_PREP_REPEAT | DMA_PREP_LOAD_EOT;
++	chan->xt->numf = num_lines;
++	chan->xt->src_start = buffer_addr;
++	chan->xt->sgl[0].size = line_size;
++	chan->xt->sgl[0].icg = line_stride - line_size;
++
++	desc = dmaengine_prep_interleaved_dma(chan->dma_chan, chan->xt, flags);
++	if (!desc) {
++		dev_err(chan->dev, "failed to prepare DMA descriptor\n");
++		return;
++	}
++
++	dmaengine_submit(desc);
++	dma_async_issue_pending(chan->dma_chan);
++}
++
++/**
++ * mmi_dc_dma_stop_transfer - Stop the current DMA transfer
++ * @chan: the MMI DC DMA channel
++ */
++void mmi_dc_dma_stop_transfer(struct mmi_dc_dma_chan *chan)
++{
++	if (WARN_ON(!chan))
++		return;
++
++	dmaengine_terminate_sync(chan->dma_chan);
++}
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_dma.h b/drivers/gpu/drm/xlnx/mmi_dc_dma.h
+new file mode 100644
+index 000000000000..ed7f4cce69ae
+--- /dev/null
++++ b/drivers/gpu/drm/xlnx/mmi_dc_dma.h
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * DMA Interface for Multimedia Integrated Display Controller Driver
++ *
++ * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
++ */
++
++#ifndef __MMI_DC_DMA_H__
++#define __MMI_DC_DMA_H__
++
++#include <linux/device.h>
++
++struct mmi_dc_dma_chan;
++
++struct mmi_dc_dma_chan *mmi_dc_dma_request_channel(struct device *dev,
++						   const char *name);
++void mmi_dc_dma_release_channel(struct mmi_dc_dma_chan *chan);
++unsigned int mmi_dc_dma_copy_align(struct mmi_dc_dma_chan *chan);
++void mmi_dc_dma_config_channel(struct mmi_dc_dma_chan *chan,
++			       dma_addr_t target_addr, bool video_group);
++void mmi_dc_dma_start_transfer(struct mmi_dc_dma_chan *chan,
++			       dma_addr_t buffer_addr, size_t line_size,
++			       size_t line_stride, size_t num_lines,
++			       bool auto_repeat);
++void mmi_dc_dma_stop_transfer(struct mmi_dc_dma_chan *chan);
++
++#endif /* __MMI_DC_DMA_H__ */
+diff --git a/drivers/gpu/drm/xlnx/mmi_dc_video_plane.c b/drivers/gpu/drm/xlnx/mmi_dc_video_plane.c
+index 6c0221dfa0e6..9a0ee64b0508 100644
+--- a/drivers/gpu/drm/xlnx/mmi_dc_video_plane.c
++++ b/drivers/gpu/drm/xlnx/mmi_dc_video_plane.c
+@@ -6,10 +6,9 @@
+  */
+ 
+ #include "mmi_dc.h"
++#include "mmi_dc_dma.h"
+ #include "mmi_dc_plane.h"
+ 
+-#include <linux/dma/xilinx_dpdma.h>
+-
+ #include <drm/drm_blend.h>
+ #include <drm/drm_fb_dma_helper.h>
+ #include <drm/drm_fourcc.h>
+@@ -95,13 +94,11 @@ struct mmi_dc_format_info {
+  * @base: generic MMI DC plane
+  * @format: active pixel format
+  * @dmas: DMA channels used
+- * @xt: DMA transfer template
+  */
+ struct mmi_dc_video_plane {
+ 	struct mmi_dc_plane		base;
+ 	struct mmi_dc_format_info	format;
+-	struct dma_chan			*dmas[MMI_DC_MAX_NUM_SUB_PLANES];
+-	struct dma_interleaved_template *xt;
++	struct mmi_dc_dma_chan		*dmas[MMI_DC_MAX_NUM_SUB_PLANES];
+ };
+ 
+ /* TODO: more scaling factors */
+@@ -326,9 +323,8 @@ unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc)
+ {
+ 	struct mmi_dc_plane *plane = dc->planes[MMI_DC_PLANE1];
+ 	struct mmi_dc_video_plane *video_plane = to_video_plane(plane);
+-	struct dma_chan *dma_channel = video_plane->dmas[0];
+ 
+-	return 1 << dma_channel->device->copy_align;
++	return mmi_dc_dma_copy_align(video_plane->dmas[0]);
+ }
+ 
+ /**
+@@ -345,16 +341,16 @@ static int mmi_dc_video_plane_request_dma(struct mmi_dc_video_plane *plane)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
+-		struct dma_chan *dma_channel;
+-		char dma_channel_name[32];
+-
+-		snprintf(dma_channel_name, sizeof(dma_channel_name),
+-			 "vid.%u.%u", plane->base.id, i);
+-		dma_channel = dma_request_chan(dc->dev, dma_channel_name);
+-		if (IS_ERR(dma_channel))
+-			return dev_err_probe(dc->dev, PTR_ERR(dma_channel),
++		struct mmi_dc_dma_chan *dma_chan;
++		char dma_chan_name[32];
++
++		snprintf(dma_chan_name, sizeof(dma_chan_name), "vid.%u.%u",
++			 plane->base.id, i);
++		dma_chan = mmi_dc_dma_request_channel(dc->dev, dma_chan_name);
++		if (IS_ERR(dma_chan))
++			return dev_err_probe(dc->dev, PTR_ERR(dma_chan),
+ 					     "failed to request dma channel");
+-		plane->dmas[i] = dma_channel;
++		plane->dmas[i] = dma_chan;
+ 	}
+ 
+ 	return 0;
+@@ -369,11 +365,11 @@ static void mmi_dc_video_plane_release_dma(struct mmi_dc_video_plane *plane)
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
+-		struct dma_chan *dma_channel = plane->dmas[i];
++		struct mmi_dc_dma_chan *dma_chan = plane->dmas[i];
+ 
+-		if (dma_channel) {
+-			dmaengine_terminate_sync(dma_channel);
+-			dma_release_channel(dma_channel);
++		if (dma_chan) {
++			mmi_dc_dma_stop_transfer(dma_chan);
++			mmi_dc_dma_release_channel(dma_chan);
+ 		}
+ 	}
+ }
+@@ -388,34 +384,20 @@ static void mmi_dc_video_plane_release_dma(struct mmi_dc_video_plane *plane)
+ static void mmi_dc_video_plane_submit_dma(struct mmi_dc_video_plane *plane,
+ 					  struct drm_plane_state *state)
+ {
+-	struct mmi_dc *dc = plane->base.dc;
+ 	const struct drm_format_info *info = plane->format.drm;
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < info->num_planes; ++i) {
+-		unsigned int width = state->crtc_w / (i ? info->hsub : 1);
+-		unsigned int height = state->crtc_h / (i ? info->vsub : 1);
+-		struct dma_chan *dma_channel = plane->dmas[i];
+-		struct dma_async_tx_descriptor *desc;
+-
+-		plane->xt->numf = height;
+-		plane->xt->src_start = drm_fb_dma_get_gem_addr(state->fb,
+-							       state, i);
+-		plane->xt->sgl[0].size = width * info->cpp[i];
+-		plane->xt->sgl[0].icg = state->fb->pitches[i] -
+-					plane->xt->sgl[0].size;
+-
+-		desc = dmaengine_prep_interleaved_dma(dma_channel, plane->xt,
+-						      DMA_CTRL_ACK |
+-						      DMA_PREP_REPEAT |
+-						      DMA_PREP_LOAD_EOT);
+-		if (!desc) {
+-			dev_err(dc->dev, "failed to prepare DMA descriptor\n");
+-			return;
+-		}
+-
+-		dmaengine_submit(desc);
+-		dma_async_issue_pending(dma_channel);
++		size_t width = state->crtc_w / (i ? info->hsub : 1);
++		size_t height = state->crtc_h / (i ? info->vsub : 1);
++		size_t pitch = state->fb->pitches[i];
++		size_t size = width * info->cpp[i];
++		struct mmi_dc_dma_chan *dma_chan = plane->dmas[i];
++		dma_addr_t src_addr =
++			drm_fb_dma_get_gem_addr(state->fb, state, i);
++
++		mmi_dc_dma_start_transfer(dma_chan, src_addr, size, pitch,
++					  height, true);
+ 	}
+ }
+ 
+@@ -460,19 +442,8 @@ static void mmi_dc_video_plane_set_format(struct mmi_dc_video_plane *plane,
+ 
+ 	mmi_dc_avbuf_plane_set_format(plane);
+ 
+-	for (i = 0; i < info->num_planes; ++i) {
+-		struct dma_chan *dma_channel = plane->dmas[i];
+-		struct xilinx_dpdma_peripheral_config pconfig = {
+-			.video_group = true,
+-		};
+-		struct dma_slave_config sconfig = {
+-			.direction = DMA_MEM_TO_DEV,
+-			.peripheral_config = &pconfig,
+-			.peripheral_size = sizeof(pconfig),
+-		};
+-
+-		dmaengine_slave_config(dma_channel, &sconfig);
+-	}
++	for (i = 0; i < info->num_planes; ++i)
++		mmi_dc_dma_config_channel(plane->dmas[i], 0, true);
+ }
+ 
+ /**
+@@ -581,7 +552,7 @@ static void mmi_dc_video_plane_disable(struct mmi_dc_plane *plane)
+ 	int i;
+ 
+ 	for (i = 0; i < video_plane->format.drm->num_planes; ++i)
+-		dmaengine_terminate_sync(video_plane->dmas[i]);
++		mmi_dc_dma_stop_transfer(video_plane->dmas[i]);
+ 
+ 	mmi_dc_avbuf_plane_disable(video_plane);
+ 	mmi_dc_blend_plane_disable(video_plane);
+@@ -631,7 +602,6 @@ static struct mmi_dc_video_plane *
+ mmi_dc_video_plane_create(struct mmi_dc *dc, struct drm_device *drm,
+ 			  enum mmi_dc_plane_id id, enum drm_plane_type type)
+ {
+-	size_t xt_alloc_size;
+ 	struct mmi_dc_video_plane *plane;
+ 	int ret;
+ 
+@@ -654,16 +624,6 @@ mmi_dc_video_plane_create(struct mmi_dc *dc, struct drm_device *drm,
+ 	if (ret < 0)
+ 		return ERR_PTR(ret);
+ 
+-	xt_alloc_size = sizeof(struct dma_interleaved_template) +
+-			sizeof(struct data_chunk);
+-	plane->xt = devm_kzalloc(dc->dev, xt_alloc_size, GFP_KERNEL);
+-	if (!plane->xt)
+-		return ERR_PTR(-ENOMEM);
+-
+-	plane->xt->dir = DMA_MEM_TO_DEV;
+-	plane->xt->src_sgl = true;
+-	plane->xt->frame_size = 1;
+-
+ 	return plane;
+ }
+ 
+-- 
+2.43.0
+

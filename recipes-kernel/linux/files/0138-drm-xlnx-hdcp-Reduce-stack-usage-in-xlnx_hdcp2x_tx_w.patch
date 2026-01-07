@@ -1,0 +1,127 @@
+From 558ed54bab220b5ff3c54508a9f79047e7571878 Mon Sep 17 00:00:00 2001
+From: Dhanunjanrao Katta <katta.dhanunjanrao@amd.com>
+Date: Tue, 30 Sep 2025 11:44:40 +0530
+Subject: [PATCH 138/190] drm: xlnx: hdcp: Reduce stack usage in
+ xlnx_hdcp2x_tx_write_msg
+
+commit dbd4ba957c5906014d69feb9d6ead45cf4ca7330 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The warning was caused by large stack allocation of `struct
+xhdcp2x_tx_msg`. To resolve this, the structure is now dynamically
+allocated using `kzalloc`, which ensures zero-initialization and avoids
+stack overflow risks.
+
+Fixes the following compiler warning:
+warning: stack frame size (1104) exceeds limit (1024) in
+'xlnx_hdcp2x_tx_write_msg'
+
+Reported-by: kernel test robot <lkp@intel.com>
+Closes: https://lore.kernel.org/oe-kbuild-all/202501112101.bseGgj4Z-lkp@intel.com/
+Signed-off-by: Dhanunjanrao Katta <katta.dhanunjanrao@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1759212880-36802-3-git-send-email-katta.dhanunjanrao@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/gpu/drm/xlnx/hdcp/xlnx_hdcp2x_tx.c | 26 +++++++++++++---------
+ 1 file changed, 16 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/gpu/drm/xlnx/hdcp/xlnx_hdcp2x_tx.c b/drivers/gpu/drm/xlnx/hdcp/xlnx_hdcp2x_tx.c
+index 9735a1cec185..515fbf2c7f85 100644
+--- a/drivers/gpu/drm/xlnx/hdcp/xlnx_hdcp2x_tx.c
++++ b/drivers/gpu/drm/xlnx/hdcp/xlnx_hdcp2x_tx.c
+@@ -607,18 +607,22 @@ int xlnx_hdcp2x_tx_read_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 msg_id)
+ 
+ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ {
+-	struct xhdcp2x_tx_msg tx_msg;
++	struct xhdcp2x_tx_msg *tx_msg;
+ 	int message_size = 0;
+ 	int status = -EINVAL;
+ 
+-	memcpy(&tx_msg, xhdcp2x_tx->msg_buffer, sizeof(struct xhdcp2x_tx_msg));
++	tx_msg = kzalloc(sizeof(*tx_msg), GFP_KERNEL);
++	if (!tx_msg)
++		return -ENOMEM;
+ 
+-	switch (tx_msg.msg_type.msg_id) {
++	memcpy(tx_msg, xhdcp2x_tx->msg_buffer, sizeof(struct xhdcp2x_tx_msg));
++
++	switch (tx_msg->msg_type.msg_id) {
+ 	case HDCP_2_2_AKE_INIT:
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-							(u8 *)&tx_msg,
++							(u8 *)tx_msg,
+ 							sizeof(struct hdcp2x_tx_ake_init) + 1);
+ 		if (message_size == sizeof(struct hdcp2x_tx_ake_init) + 1)
+ 			status = 0;
+@@ -627,7 +631,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-							(u8 *)&tx_msg,
++							(u8 *)tx_msg,
+ 							sizeof(struct hdcp2x_tx_ake_no_stored_km)
+ 							+ 1);
+ 
+@@ -638,7 +642,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-							(u8 *)&tx_msg,
++							(u8 *)tx_msg,
+ 							sizeof(struct hdcp2x_tx_ake_stored_km)
+ 							+ 1);
+ 
+@@ -649,7 +653,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-							(u8 *)&tx_msg,
++							(u8 *)tx_msg,
+ 							sizeof(struct hdcp2x_tx_lc_init) + 1);
+ 
+ 		if (message_size == (sizeof(struct hdcp2x_tx_lc_init) + 1))
+@@ -659,7 +663,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-							(u8 *)&tx_msg,
++							(u8 *)tx_msg,
+ 							sizeof(struct hdcp2x_tx_ske_send_eks)
+ 							+ 1);
+ 
+@@ -680,7 +684,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-							(u8 *)&tx_msg,
++							(u8 *)tx_msg,
+ 							sizeof(struct hdcp2x_tx_rpt_auth_send_ack)
+ 							+ 1);
+ 
+@@ -691,7 +695,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		message_size =
+ 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
+ 						HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
+-						(u8 *)&tx_msg,
++						(u8 *)tx_msg,
+ 						sizeof(struct hdcp2x_tx_rpt_auth_stream_manage)
+ 						+ 1);
+ 
+@@ -702,6 +706,8 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
+ 		status = -EINVAL;
+ 		break;
+ 	}
++
++	kfree(tx_msg);
+ 	return status;
+ }
+ 
+-- 
+2.43.0
+

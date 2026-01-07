@@ -1,0 +1,46 @@
+From 87d15c7eb60eb59c4ebae176d1a42d30cc6aaf96 Mon Sep 17 00:00:00 2001
+From: Asif Ikbal <asif.ikbal@amd.com>
+Date: Tue, 16 Sep 2025 11:55:41 +0530
+Subject: [PATCH 106/190] v4l: xilinx: vpss-scaler: Fix inconsistent indenting
+
+commit 4d186098815a06a752015d9dc8723aacae1177a5 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Fix smatch warning for inconsistent indentation.
+
+Remove unnecessary parentheses to fix checkpatch.pl warnings.
+
+Signed-off-by: Asif Ikbal <asif.ikbal@amd.com>
+Message-ID: <1758003942-3610046-4-git-send-email-asif.ikbal@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/media/platform/xilinx/xilinx-vpss-scaler.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/platform/xilinx/xilinx-vpss-scaler.c b/drivers/media/platform/xilinx/xilinx-vpss-scaler.c
+index db8ec382f8ca..cdf5f6f75fc5 100644
+--- a/drivers/media/platform/xilinx/xilinx-vpss-scaler.c
++++ b/drivers/media/platform/xilinx/xilinx-vpss-scaler.c
+@@ -1010,7 +1010,7 @@ xv_hscaler_calculate_phases(struct xscaler_device *xscaler,
+ 			}
+ 
+ 			if (((offset >> XHSC_STEP_PRECISION_SHIFT) == 0) &&
+-			    (xwrite_pos < width_out)) {
++			    xwrite_pos < width_out) {
+ 				/* produce a new output sample */
+ 				offset += pixel_rate;
+ 				output_write_en = true;
+@@ -1260,7 +1260,7 @@ static void xv_hscaler_set_coeff(struct xscaler_device *xscaler)
+ 			       XSCALER_BITSHIFT_16) |
+ 			       (xscaler->hscaler_coeff[i][rd_indx] &
+ 			       XHSC_MASK_LOW_16BITS);
+-			 xvip_write(&xscaler->xvip, base_addr +
++			xvip_write(&xscaler->xvip, base_addr +
+ 				    ((i * ntaps / 2 + j) * 4), val);
+ 		}
+ 	}
+-- 
+2.43.0
+

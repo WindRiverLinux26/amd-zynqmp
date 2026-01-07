@@ -1,0 +1,59 @@
+From 957b9844ae58a8863ed3d76defa70df992f11616 Mon Sep 17 00:00:00 2001
+From: Michal Simek <michal.simek@amd.com>
+Date: Tue, 2 Sep 2025 08:22:31 +0200
+Subject: [PATCH 086/190] arm64: zynqmp: Disable perf monitor by default
+
+commit b2c4a28a019cdff96c619240554e18a88e6b0886 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Axi performance monitor IP should be enabled only for debugging purpose and
+shouldn't be enabled by default that's why disable it.
+
+Signed-off-by: Michal Simek <michal.simek@amd.com>
+Message-ID: <e564ab8ff270c82a8e2593545fe2db25600b5193.1756794145.git.michal.simek@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ arch/arm64/boot/dts/xilinx/zynqmp.dtsi | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/xilinx/zynqmp.dtsi b/arch/arm64/boot/dts/xilinx/zynqmp.dtsi
+index 441881fafb3b..2fa52f778b20 100644
+--- a/arch/arm64/boot/dts/xilinx/zynqmp.dtsi
++++ b/arch/arm64/boot/dts/xilinx/zynqmp.dtsi
+@@ -863,6 +863,7 @@ ocm: memory-controller@ff960000 {
+ 
+ 		perf_monitor_ocm: perf-monitor@ffa00000 {
+ 			compatible = "xlnx,axi-perf-monitor";
++			status = "disabled";
+ 			reg = <0x0 0xffa00000 0x0 0x10000>;
+ 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+ 			interrupt-parent = <&gic>;
+@@ -881,6 +882,7 @@ perf_monitor_ocm: perf-monitor@ffa00000 {
+ 
+ 		perf_monitor_ddr: perf-monitor@fd0b0000 {
+ 			compatible = "xlnx,axi-perf-monitor";
++			status = "disabled";
+ 			reg = <0x0 0xfd0b0000 0x0 0x10000>;
+ 			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
+ 			interrupt-parent = <&gic>;
+@@ -899,6 +901,7 @@ perf_monitor_ddr: perf-monitor@fd0b0000 {
+ 
+ 		perf_monitor_cci: perf-monitor@fd490000 {
+ 			compatible = "xlnx,axi-perf-monitor";
++			status = "disabled";
+ 			reg = <0x0 0xfd490000 0x0 0x10000>;
+ 			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
+ 			interrupt-parent = <&gic>;
+@@ -917,6 +920,7 @@ perf_monitor_cci: perf-monitor@fd490000 {
+ 
+ 		perf_monitor_lpd: perf-monitor@ffa10000 {
+ 			compatible = "xlnx,axi-perf-monitor";
++			status = "disabled";
+ 			reg = <0x0 0xffa10000 0x0 0x10000>;
+ 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+ 			interrupt-parent = <&gic>;
+-- 
+2.43.0
+

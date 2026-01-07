@@ -1,0 +1,55 @@
+From 6ee54a36068d83b3260590bc075fa9bbb236ce9f Mon Sep 17 00:00:00 2001
+From: Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+Date: Fri, 22 Aug 2025 04:29:46 +0530
+Subject: [PATCH 052/190] dt-bindings: phy: v-hdmi-phy1: Add support for DPLL
+ clock primitive
+
+commit ba4df9982ad7a6f493c33790a659bfdc7613f0f5 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Add device tree bindings to support the DPLL clock primitive type.
+This includes entries for both Tx and Rx clock configurations,
+allowing the IP to be properly initialized based on the primitive
+type.
+
+Signed-off-by: Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+Reviewed-by: Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+Message-ID: <1755817187-2687516-2-git-send-email-rajesh.gugulothu@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ Documentation/devicetree/bindings/phy/xlnx,v-hmdi-phy1.yaml | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/phy/xlnx,v-hmdi-phy1.yaml b/Documentation/devicetree/bindings/phy/xlnx,v-hmdi-phy1.yaml
+index 728179b7ab0d..6da94b2f6792 100644
+--- a/Documentation/devicetree/bindings/phy/xlnx,v-hmdi-phy1.yaml
++++ b/Documentation/devicetree/bindings/phy/xlnx,v-hmdi-phy1.yaml
+@@ -188,9 +188,10 @@ properties:
+       are as below.
+       0 - MMCM
+       1 - PLL
++      2 - DPLL
+     allOf:
+       - $ref: /schemas/types.yaml#/definitions/uint32
+-      - enum: [0, 1]
++      - enum: [0, 1, 2]
+ 
+   xlnx,tx-clk-primitive:
+     description: |
+@@ -198,9 +199,10 @@ properties:
+       are as below.
+       0 - MMCM
+       1 - PLL
++      2 - DPLL
+     allOf:
+       - $ref: /schemas/types.yaml#/definitions/uint32
+-      - enum: [0, 1]
++      - enum: [0, 1, 2]
+ 
+   "#phy-cells":
+     const: 0
+-- 
+2.43.0
+

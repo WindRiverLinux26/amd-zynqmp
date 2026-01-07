@@ -1,0 +1,38 @@
+From 8e18c99525b8659da6501a68cb9a5c82aa9a37c7 Mon Sep 17 00:00:00 2001
+From: Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+Date: Mon, 25 Aug 2025 15:15:01 +0530
+Subject: [PATCH 066/190] dt-bindings: media: xilinx: dprxss: Add 12 bpc
+ support
+
+commit de38b155d207188e5ecf7fc59eb2ef0e39469bb2 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Extend the 'xlnx,bpc' property to include 12 bpc
+support in the Xilinx display interface bindings.
+
+Signed-off-by: Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <1756115102-711806-2-git-send-email-lakshmi.prasanna.eachuri@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml         | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml b/Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
+index cafc7d5fcc05..fb7b1446a3db 100644
+--- a/Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
++++ b/Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
+@@ -89,7 +89,7 @@ properties:
+     description: |
+       Max BPC value that IP configured with. For example if IP is
+       configured
+-      with 10 BPC means it supports (6, 8, 10) up to 10bpc.
++      with 12 BPC means it supports (6, 8, 10, 12) up to 12bpc.
+       Possible values are 6, 8, 10, 12, 16.
+     allOf:
+       - $ref: /schemas/types.yaml#/definitions/uint32
+-- 
+2.43.0
+

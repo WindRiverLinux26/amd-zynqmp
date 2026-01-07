@@ -1,0 +1,71 @@
+From 72488d07a600f8c04b4cbf575cffb8c3359b7e31 Mon Sep 17 00:00:00 2001
+From: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Date: Thu, 6 Nov 2025 21:25:36 -0800
+Subject: [PATCH 188/190] xilinx-ai-engine: do dma pause before reset in part
+ init
+
+commit 5100e3f2d0ae15ca57f61099ee3318af45fbcc1f from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Before performing col reset or shim reset, there should be no active DMA
+transaction. It was assumed that part init would only occur either after
+POR or part_teardown. This is not the case. User can call part init
+multiple times during context switch.
+
+Signed-off-by: Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+Message-ID: <20251107052538.1087250-3-govindarajulu.varadarajan@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ .../misc/xilinx-ai-engine/ai-engine-reset.c   | 20 ++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-reset.c b/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
+index f0e3dc35ae9b..7692d162ca73 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-reset.c
+@@ -14,6 +14,9 @@
+ 
+ #include "ai-engine-trace.h"
+ 
++static int aie_part_maskpoll_noc_outstanding_aximm_txn(struct aie_partition *apart);
++static int aie_part_maskpoll_uc_outstanding_aximm_txn(struct aie_partition *apart);
++
+ static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
+ 					   u32 addr, u32 width)
+ {
+@@ -831,6 +834,19 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
+ 	}
+ 	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
+ 
++	opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
++	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
++	if (ret)
++		goto out;
++
++	ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
++	if (ret)
++		goto out;
++
++	ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
++	if (ret)
++		goto out;
++
+ 	/* Clear resources */
+ 	aie_part_clear_cached_events(apart);
+ 	aie_part_rscmgr_reset(apart);
+@@ -1146,7 +1162,9 @@ int aie2ps_part_teardown(struct aie_partition *apart)
+ 
+ 	trace_aie_part_teardown(apart);
+ 	mutex_lock(&apart->mlock);
+-	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE, apart->range, 1);
++
++	opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
++	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
+ 	if (ret)
+ 		goto out;
+ 
+-- 
+2.43.0
+

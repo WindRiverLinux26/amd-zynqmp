@@ -1,0 +1,538 @@
+From 9b6a5d37c4fa792828d5c3c6464b50f85c1c8b78 Mon Sep 17 00:00:00 2001
+From: Amit Kumar Mahapatra <amit.kumar-mahapatra@amd.com>
+Date: Mon, 18 Aug 2025 23:44:37 +0530
+Subject: [PATCH 050/190] mtd: spi-nor: Add SDR-PHY support for OSPI flashes
+
+commit 7838279ac933c84c2a808420586738dabf2014ce from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Update SPI-NOR to switch to SDR-PHY mode when the flash does not support
+the DTR protocol. Modify the driver to configure the controller in SDR-PHY
+mode and perform RX tuning, with a fallback to SDR NON-PHY mode if tuning
+fails.
+
+Signed-off-by: Amit Kumar Mahapatra <amit.kumar-mahapatra@amd.com>
+Message-ID: <20250818181437.1256858-1-amit.kumar-mahapatra@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/mtd/spi-nor/core.c        |  5 +-
+ drivers/mtd/spi-nor/core.h        |  2 +
+ drivers/mtd/spi-nor/gigadevice.c  | 51 ++++++++++++++++
+ drivers/mtd/spi-nor/issi.c        | 50 ++++++++++++++++
+ drivers/mtd/spi-nor/macronix.c    | 51 ++++++++++++++++
+ drivers/mtd/spi-nor/micron-st.c   | 34 +++++++++++
+ drivers/spi/spi-cadence-quadspi.c | 96 +++++++++++++++++++++++++++----
+ include/linux/spi/spi.h           |  2 +
+ 8 files changed, 280 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/mtd/spi-nor/core.c b/drivers/mtd/spi-nor/core.c
+index 325a06aba1b1..2ee1134e55ac 100644
+--- a/drivers/mtd/spi-nor/core.c
++++ b/drivers/mtd/spi-nor/core.c
+@@ -3713,8 +3713,11 @@ static int spi_nor_set_octal_dtr(struct spi_nor *nor, bool enable)
+ 		return 0;
+ 
+ 	if (!(nor->read_proto == SNOR_PROTO_8_8_8_DTR &&
+-	      nor->write_proto == SNOR_PROTO_8_8_8_DTR))
++	      nor->write_proto == SNOR_PROTO_8_8_8_DTR)) {
++		if (params->phy_enable)
++			params->phy_enable(nor);
+ 		return 0;
++	}
+ 
+ 	if (!(nor->flags & SNOR_F_IO_MODE_EN_VOLATILE))
+ 		return 0;
+diff --git a/drivers/mtd/spi-nor/core.h b/drivers/mtd/spi-nor/core.h
+index 023fb693d7e9..7c779db63948 100644
+--- a/drivers/mtd/spi-nor/core.h
++++ b/drivers/mtd/spi-nor/core.h
+@@ -382,6 +382,7 @@ struct spi_nor_otp {
+  *                      Table.
+  * @otp:		SPI NOR OTP info.
+  * @set_octal_dtr:	enables or disables SPI NOR octal DTR mode.
++ * @phy_enable:		enables or disables PHY when missing DTR protocol
+  * @quad_enable:	enables SPI NOR quad mode.
+  * @set_4byte_addr_mode: puts the SPI NOR in 4 byte addressing mode.
+  * @ready:		(optional) flashes might use a different mechanism
+@@ -413,6 +414,7 @@ struct spi_nor_flash_parameter {
+ 	struct spi_nor_otp		otp;
+ 
+ 	int (*set_octal_dtr)(struct spi_nor *nor, bool enable);
++	int (*phy_enable)(struct spi_nor *nor);
+ 	int (*quad_enable)(struct spi_nor *nor);
+ 	int (*set_4byte_addr_mode)(struct spi_nor *nor, bool enable);
+ 	int (*ready)(struct spi_nor *nor);
+diff --git a/drivers/mtd/spi-nor/gigadevice.c b/drivers/mtd/spi-nor/gigadevice.c
+index 352a09a686c6..910c45f72c90 100644
+--- a/drivers/mtd/spi-nor/gigadevice.c
++++ b/drivers/mtd/spi-nor/gigadevice.c
+@@ -16,6 +16,56 @@
+ #define SPINOR_GD_OCT_DTR	0xe7	/* Enable Octal DTR. */
+ #define SPINOR_GD_EXSPI		0xff	/* Enable Extended SPI (default) */
+ 
++static int spi_nor_gigadevice_phy_enable(struct spi_nor *nor)
++{
++	struct spi_mem_op op;
++	u8 *buf = nor->bouncebuf;
++	int ret;
++
++	ret = spi_nor_write_enable(nor);
++	if (ret)
++		goto ret;
++
++	buf[0] = SPINOR_GD_EXSPI;
++
++	op = (struct spi_mem_op)
++		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_GD_WR_ANY_REG, 1),
++			   SPI_MEM_OP_ADDR(4, SPINOR_REG_GD_CFR0V, 1),
++			   SPI_MEM_OP_NO_DUMMY,
++			   SPI_MEM_OP_DATA_OUT(1, buf, 1));
++
++	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
++
++	ret = spi_mem_exec_op(nor->spimem, &op);
++	if (ret)
++		goto ret;
++
++	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
++		return 0;
++
++	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
++	/* Read flash ID to make sure the switch was successful. */
++	op = (struct spi_mem_op)
++		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
++			   SPI_MEM_OP_NO_ADDR,
++			   SPI_MEM_OP_DUMMY(0, 1),
++			   SPI_MEM_OP_DATA_IN(nor->info->id->len, buf, 1));
++
++	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
++
++	ret = spi_mem_exec_op(nor->spimem, &op);
++	if (ret)
++		goto ret;
++
++	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
++		goto ret;
++
++	return 0;
++ret:
++	nor->spimem->spi->controller->flags &= ~SPI_CONTROLLER_SDR_PHY;
++	return 0;
++}
++
+ static int spi_nor_gigadevice_octal_dtr_enable(struct spi_nor *nor, bool enable)
+ {
+ 	struct spi_mem_op op;
+@@ -113,6 +163,7 @@ static void gd25lx256e_default_init(struct spi_nor *nor)
+ 	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
+ 	params->set_octal_dtr = spi_nor_gigadevice_octal_dtr_enable;
+ 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
++	params->phy_enable = spi_nor_gigadevice_phy_enable;
+ }
+ 
+ static int gd25lx256e_post_sfdp_fixup(struct spi_nor *nor)
+diff --git a/drivers/mtd/spi-nor/issi.c b/drivers/mtd/spi-nor/issi.c
+index 8123ee503f90..b90b1e6ec0c7 100644
+--- a/drivers/mtd/spi-nor/issi.c
++++ b/drivers/mtd/spi-nor/issi.c
+@@ -16,6 +16,55 @@
+ #define SPINOR_IS_OCT_DTR	0xe7	/* Enable Octal DTR. */
+ #define SPINOR_IS_EXSPI		0xff	/* Enable Extended SPI (default) */
+ 
++static int spi_nor_issi_phy_enable(struct spi_nor *nor)
++{
++	struct spi_mem_op op;
++	u8 *buf = nor->bouncebuf;
++	int ret;
++
++	ret = spi_nor_write_enable(nor);
++	if (ret)
++		goto ret;
++
++	buf[0] = SPINOR_IS_EXSPI;
++
++	op = (struct spi_mem_op)
++		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_IS_WR_ANY_REG, 1),
++			   SPI_MEM_OP_ADDR(4, SPINOR_REG_IS_CFR0V, 1),
++			   SPI_MEM_OP_NO_DUMMY,
++			   SPI_MEM_OP_DATA_OUT(1, buf, 1));
++
++	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
++
++	ret = spi_mem_exec_op(nor->spimem, &op);
++	if (ret)
++		goto ret;
++
++	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
++		return 0;
++
++	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
++	/* Read flash ID to make sure the switch was successful. */
++	op = (struct spi_mem_op)
++		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
++			   SPI_MEM_OP_NO_ADDR,
++			   SPI_MEM_OP_DUMMY(0, 1),
++			   SPI_MEM_OP_DATA_IN(nor->info->id->len, buf, 1));
++
++	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
++
++	ret = spi_mem_exec_op(nor->spimem, &op);
++	if (ret)
++		goto ret;
++
++	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
++		goto ret;
++
++	return 0;
++ret:
++	nor->spimem->spi->controller->flags &= ~SPI_CONTROLLER_SDR_PHY;
++	return 0;
++}
+ static int spi_nor_issi_octal_dtr_enable(struct spi_nor *nor, bool enable)
+ {
+ 	struct spi_mem_op op;
+@@ -112,6 +161,7 @@ static void is25wx256_default_init(struct spi_nor *nor)
+ 
+ 	params->set_octal_dtr = spi_nor_issi_octal_dtr_enable;
+ 	params->set_4byte_addr_mode = is25wx256_set_4byte_addr_mode;
++	params->phy_enable = spi_nor_issi_phy_enable;
+ }
+ 
+ static int is25wx256_post_sfdp_fixup(struct spi_nor *nor)
+diff --git a/drivers/mtd/spi-nor/macronix.c b/drivers/mtd/spi-nor/macronix.c
+index ef0562b6c217..8897265faf9b 100644
+--- a/drivers/mtd/spi-nor/macronix.c
++++ b/drivers/mtd/spi-nor/macronix.c
+@@ -18,6 +18,56 @@
+ #define SPINOR_REG_MX_CFR2V_ECC		0x00000000
+ #define SPINOR_MX_CFR2_DC_VALUE		0x000  /* For setting dummy cycles to 20(default) */
+ 
++static int spi_nor_macronix_phy_enable(struct spi_nor *nor)
++{
++	struct spi_mem_op op;
++	u8 *buf = nor->bouncebuf;
++	int ret;
++
++	ret = spi_nor_write_enable(nor);
++	if (ret)
++		goto ret;
++
++	buf[0] = SPINOR_MX_EXSPI;
++
++	op = (struct spi_mem_op)
++		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_MX_WR_ANY_REG, 1),
++			   SPI_MEM_OP_ADDR(4, SPINOR_REG_MX_CFR0V, 1),
++			   SPI_MEM_OP_NO_DUMMY,
++			   SPI_MEM_OP_DATA_OUT(1, buf, 1));
++
++	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
++
++	ret = spi_mem_exec_op(nor->spimem, &op);
++	if (ret)
++		goto ret;
++
++	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
++		return 0;
++
++	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
++	/* Read flash ID to make sure the switch was successful. */
++	op = (struct spi_mem_op)
++		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
++			   SPI_MEM_OP_NO_ADDR,
++			   SPI_MEM_OP_DUMMY(0, 1),
++			   SPI_MEM_OP_DATA_IN(nor->info->id->len, buf, 1));
++
++	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
++
++	ret = spi_mem_exec_op(nor->spimem, &op);
++	if (ret)
++		goto ret;
++
++	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
++		goto ret;
++
++	return 0;
++ret:
++	nor->spimem->spi->controller->flags &= ~SPI_CONTROLLER_SDR_PHY;
++	return 0;
++}
++
+ static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
+ {
+ 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+@@ -112,6 +162,7 @@ static void mx25um51345g_default_init_fixups(struct spi_nor *nor)
+ 				SPINOR_OP_PP_4B;
+ 
+ 	params->set_octal_dtr = spi_nor_macronix_octal_dtr_enable;
++	params->phy_enable = spi_nor_macronix_phy_enable;
+ }
+ 
+ static int mx25um51345g_post_sfdp_fixup(struct spi_nor *nor)
+diff --git a/drivers/mtd/spi-nor/micron-st.c b/drivers/mtd/spi-nor/micron-st.c
+index d1e0dff2dfed..d552c9dcd521 100644
+--- a/drivers/mtd/spi-nor/micron-st.c
++++ b/drivers/mtd/spi-nor/micron-st.c
+@@ -45,6 +45,39 @@
+ 		   SPI_MEM_OP_NO_DUMMY,					\
+ 		   SPI_MEM_OP_NO_DATA)
+ 
++static int micron_st_nor_phy_enable(struct spi_nor *nor)
++{
++	struct spi_mem_op op;
++	u8 *buf = nor->bouncebuf;
++	int ret;
++
++	buf[0] = SPINOR_MT_EXSPI;
++	op = (struct spi_mem_op)
++		MICRON_ST_NOR_WR_ANY_REG_OP(nor->addr_nbytes,
++					    SPINOR_REG_MT_CFR0V, 1, buf);
++	ret = spi_nor_write_any_volatile_reg(nor, &op, SNOR_PROTO_1_1_1);
++	if (ret)
++		goto ret;
++
++	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
++		return 0;
++
++	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
++	/* Read flash ID to make sure the switch was successful. */
++	ret = spi_nor_read_id(nor, 0, 0, buf, SNOR_PROTO_1_1_1);
++	if (ret) {
++		dev_dbg(nor->dev, "error %d reading JEDEC ID after disabling 1D-1D-1D mode\n", ret);
++		goto ret;
++	}
++
++	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
++		goto ret;
++
++	return 0;
++ret:
++	nor->spimem->spi->controller->flags &= ~SPI_CONTROLLER_SDR_PHY;
++	return 0;
++}
+ static int micron_st_nor_octal_dtr_en(struct spi_nor *nor)
+ {
+ 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+@@ -133,6 +166,7 @@ static void mt35xu512aba_default_init(struct spi_nor *nor)
+ 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+ 
+ 	params->set_octal_dtr = micron_st_nor_set_octal_dtr;
++	params->phy_enable = micron_st_nor_phy_enable;
+ }
+ 
+ static int mt35xu512aba_post_sfdp_fixup(struct spi_nor *nor)
+diff --git a/drivers/spi/spi-cadence-quadspi.c b/drivers/spi/spi-cadence-quadspi.c
+index 4cde4f2a6a3c..82af3421c7b0 100644
+--- a/drivers/spi/spi-cadence-quadspi.c
++++ b/drivers/spi/spi-cadence-quadspi.c
+@@ -194,6 +194,7 @@ struct cqspi_driver_platdata {
+ #define CQSPI_REG_READCAPTURE_DELAY_LSB		1
+ #define CQSPI_REG_READCAPTURE_DELAY_MASK	0xF
+ #define CQSPI_REG_READCAPTURE_DQS_ENABLE	BIT(8)
++#define CQSPI_REG_READCAPTURE_PHY_DELAY_MASK	0x1E
+ 
+ #define CQSPI_REG_SIZE				0x14
+ #define CQSPI_REG_SIZE_ADDRESS_LSB		0
+@@ -225,6 +226,7 @@ struct cqspi_driver_platdata {
+ #define CQSPI_REG_WR_DISABLE_AUTO_POLL		BIT(14)
+ #define CQSPI_REG_WRCOMPLETION_POLLCNT_MASK	0xFF0000
+ #define CQSPI_REG_WRCOMPLETION_POLLCNY_LSB	16
++#define CQSPI_REG_WRCOMPLETION_PHY_POLLCNT	0x3
+ 
+ #define CQSPI_REG_IRQSTATUS			0x40
+ #define CQSPI_REG_IRQMASK			0x44
+@@ -340,7 +342,8 @@ struct cqspi_driver_platdata {
+ #define CQSPI_DLL_MODE_MASTER		0
+ #define CQSPI_DLL_MODE_BYPASS		1
+ #define TAP_GRAN_SEL_MIN_FREQ		120000000
+-#define CQSPI_TX_TAP_MASTER		0x1E
++#define CQSPI_DDR_TX_TAP_MASTER		0x1E
++#define CQSPI_SDR_TX_TAP_MASTER		0x3C
+ #define CQSPI_MAX_DLL_TAPS		127
+ 
+ #define	CQSPI_SELECT_LOWER_CS		BIT(0)
+@@ -575,10 +578,11 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
+ 	size_t read_len;
+ 	int status;
+ 
+-	status = cqspi_enable_dtr(f_pdata, op, CQSPI_REG_OP_EXT_STIG_LSB);
+-	if (status)
+-		return status;
+-
++	if (f_pdata->dtr) {
++		status = cqspi_enable_dtr(f_pdata, op, CQSPI_REG_OP_EXT_STIG_LSB);
++		if (status)
++			return status;
++	}
+ 	if (!n_rx || n_rx > CQSPI_STIG_DATA_LEN_MAX || !rxbuf) {
+ 		dev_err(&cqspi->pdev->dev,
+ 			"Invalid input argument, len %zu rxbuf 0x%p\n",
+@@ -655,7 +659,7 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
+ 	return 0;
+ }
+ 
+-static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
++static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op, u32 txtap)
+ {
+ 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+ 	u8 dummy_incr, dummy_flag = 0, max_tap, count, windowsize, avg_rxtap;
+@@ -666,7 +670,6 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
+ 	int i, ret;
+ 	unsigned int reg;
+ 	bool id_matched, rxtapfound = false;
+-	u32 txtap = 0;
+ 	s8 max_windowsize = -1;
+ 
+ 	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+@@ -702,7 +705,7 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
+ 	       CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK,
+ 	       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+ 
+-	txtap = CQSPI_TX_TAP_MASTER <<
++	txtap = txtap <<
+ 		CQSPI_REG_PHY_CONFIG_TX_DLL_DLY_LSB;
+ 	max_tap = CQSPI_MAX_DLL_TAPS;
+ 
+@@ -827,6 +830,33 @@ static void cqspi_setup_ddrmode(struct cqspi_st *cqspi)
+ 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+ }
+ 
++static void cqspi_setup_sdrphymode(struct cqspi_st *cqspi)
++{
++	u32 reg;
++
++	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
++	reg &= ~CQSPI_REG_CONFIG_ENABLE_MASK;
++	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
++
++	reg |= CQSPI_REG_CONFIG_PHY_ENABLE_MASK;
++	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
++
++	/* Program POLL_CNT */
++	reg = readl(cqspi->iobase + CQSPI_REG_WR_COMPLETION_CTRL);
++	reg &= ~CQSPI_REG_WRCOMPLETION_POLLCNT_MASK;
++	reg |= (CQSPI_REG_WRCOMPLETION_PHY_POLLCNT <<
++		CQSPI_REG_WRCOMPLETION_POLLCNY_LSB);
++	writel(reg, cqspi->iobase + CQSPI_REG_WR_COMPLETION_CTRL);
++
++	reg = readl(cqspi->iobase + CQSPI_REG_READCAPTURE);
++	reg &= ~CQSPI_REG_READCAPTURE_PHY_DELAY_MASK;
++	writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
++
++	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
++	reg |= CQSPI_REG_CONFIG_ENABLE_MASK;
++	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
++}
++
+ static void cqspi_setup_sdrmode(struct cqspi_st *cqspi)
+ {
+ 	u32 reg;
+@@ -870,14 +900,20 @@ static void cqspi_periodictuning(struct work_struct *work)
+ 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+ 	u8 buf[CQSPI_READ_ID_LEN];
+ 	int ret;
++	u32 txtap;
+ 
+ 	if (!mem->request_completion.done)
+ 		wait_for_completion(&mem->request_completion);
+ 
++	if (cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr)
++		txtap = CQSPI_DDR_TX_TAP_MASTER;
++	else
++		txtap = CQSPI_SDR_TX_TAP_MASTER;
++
+ 	reinit_completion(&cqspi->tuning_complete);
+ 	cqspi->tuning_op.data.buf.in = buf;
+ 	cqspi->tuning_op.data.nbytes = CQSPI_READ_ID_LEN;
+-	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op);
++	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op, txtap);
+ 	complete_all(&cqspi->tuning_complete);
+ 	if (ret) {
+ 		dev_err(&cqspi->pdev->dev,
+@@ -888,13 +924,47 @@ static void cqspi_periodictuning(struct work_struct *work)
+ 	}
+ }
+ 
++static int cqspi_setup_phymode(struct spi_mem *mem, const struct spi_mem_op *op)
++{
++	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
++	int ret;
++	u32 txtap;
++
++	cqspi_setup_sdrphymode(cqspi);
++	txtap = CQSPI_SDR_TX_TAP_MASTER;
++
++	if (cqspi->clk_tuned)
++		return 0;
++
++	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
++
++	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = false;
++
++	ret = cqspi_setdlldelay(mem, op, txtap);
++	if (ret)
++		return ret;
++
++	complete_all(&cqspi->tuning_complete);
++	if (cqspi->tuning_scheduled) {
++		cancel_delayed_work_sync(&mem->complete_work);
++		flush_delayed_work(&mem->complete_work);
++	}
++	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
++	schedule_delayed_work(&mem->complete_work,
++			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
++	cqspi->tuning_scheduled = true;
++	return 0;
++}
++
+ static int cqspi_setup_edgemode(struct spi_mem *mem,
+ 				const struct spi_mem_op *op)
+ {
+ 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+ 	int ret;
++	u32 txtap;
+ 
+ 	cqspi_setup_ddrmode(cqspi);
++	txtap = CQSPI_DDR_TX_TAP_MASTER;
+ 
+ 	if (cqspi->clk_tuned)
+ 		return 0;
+@@ -902,7 +972,7 @@ static int cqspi_setup_edgemode(struct spi_mem *mem,
+ 
+ 	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = true;
+ 
+-	ret = cqspi_setdlldelay(mem, op);
++	ret = cqspi_setdlldelay(mem, op, txtap);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -1850,6 +1920,12 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
+ 		ret = cqspi_setup_edgemode(mem, op);
+ 		if (ret)
+ 			return ret;
++	} else if (mem->spi->controller->flags & SPI_CONTROLLER_SDR_PHY) {
++		ret = cqspi_setup_phymode(mem, op);
++		if (ret) {
++			f_pdata->dtr = false;
++			cqspi_setup_sdrmode(cqspi);
++		}
+ 	} else {
+ 		f_pdata->dtr = false;
+ 		if (cqspi->clk_tuned)
+diff --git a/include/linux/spi/spi.h b/include/linux/spi/spi.h
+index d4b8b02592a7..7ac2da39a47f 100644
+--- a/include/linux/spi/spi.h
++++ b/include/linux/spi/spi.h
+@@ -599,6 +599,8 @@ struct spi_controller {
+ #define SPI_CONTROLLER_MULTI_CS		BIT(7)
+ #define	SPI_CONTROLLER_NO_4B		BIT(8)	/* No 4-byte mode support */
+ 
++#define	SPI_CONTROLLER_SDR_PHY		BIT(9)	/* High speed mode in SDR */
++
+ 	/* Flag indicating if the allocation of this struct is devres-managed */
+ 	bool			devm_allocated;
+ 
+-- 
+2.43.0
+

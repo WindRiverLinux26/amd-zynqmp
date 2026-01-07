@@ -1,0 +1,42 @@
+From 6ec00d72c039dab8ae7a45e314fe87d6e6dbe22a Mon Sep 17 00:00:00 2001
+From: Michal Simek <michal.simek@amd.com>
+Date: Tue, 29 Jul 2025 15:55:20 +0200
+Subject: [PATCH 024/190] arm64: zynqmp: Add missing ethernet alias for
+ kr260-revB
+
+commit 0ccd299d8043cb7a534a718a372102b7fde2bb0e from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+Ethernet aliases are used in fdt_fixup_ethernet() to inject
+local-mac-address in every boot for OS. Similar change has been done for
+other carrier cards by commit c4a711253613 ("arm64: zynqmp: Describe
+ethernet controllers via aliases on SOM").
+
+Signed-off-by: Michal Simek <michal.simek@amd.com>
+Message-ID: <87d88dba98f7ed96463964684ee45a506d557226.1753797318.git.michal.simek@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revB.dtso | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revB.dtso b/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revB.dtso
+index b7cda216b179..99ad220d13d6 100644
+--- a/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revB.dtso
++++ b/arch/arm64/boot/dts/xilinx/zynqmp-sck-kr-g-revB.dtso
+@@ -20,6 +20,11 @@
+ 		     "xlnx,zynqmp-sk-kr260", "xlnx,zynqmp";
+ 	model = "ZynqMP KR260 revB";
+ 
++	aliases {
++		ethernet0 = "/axi/ethernet@ff0b0000"; /* &gem0 */
++		ethernet1 = "/axi/ethernet@ff0c0000"; /* &gem1 */
++	};
++
+ 	ina260-u14 {
+ 		compatible = "iio-hwmon";
+ 		io-channels = <&u14 0>, <&u14 1>, <&u14 2>;
+-- 
+2.43.0
+

@@ -1,0 +1,60 @@
+From 4252df0ef6f781118d2683d4ccfdb80480e9ce8a Mon Sep 17 00:00:00 2001
+From: Rohit Visavalia <rohit.visavalia@amd.com>
+Date: Fri, 3 Oct 2025 08:27:37 -0700
+Subject: [PATCH 157/190] staging: mmi-dptx: Use max lane count from
+ device-tree
+
+commit 19ef72a0423bd4efb549f7041bcacb6189b43af3 from
+https://github.com/Xilinx/linux-xlnx.git xlnx_rebase_v6.12
+
+The DP Tx supports 1(minimum default), 2 or 4 lanes configuration.
+Replace the hard coded max lane count with value read from device tree.
+
+Signed-off-by: Rohit Visavalia <rohit.visavalia@amd.com>
+Reviewed-by: Vishal Sagar <vishal.sagar@amd.com>
+Message-ID: <20251003152739.198952-2-vishal.sagar@amd.com>
+State: pending
+Signed-off-by: Quanyang Wang <quanyang.wang@windriver.com>
+Upstream-Status: Pending
+---
+ drivers/staging/xlnx-mmi-dptx/mmi_dp.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/staging/xlnx-mmi-dptx/mmi_dp.c b/drivers/staging/xlnx-mmi-dptx/mmi_dp.c
+index 60929604828c..0753985ba2d3 100644
+--- a/drivers/staging/xlnx-mmi-dptx/mmi_dp.c
++++ b/drivers/staging/xlnx-mmi-dptx/mmi_dp.c
+@@ -1064,6 +1064,7 @@ static int mmi_dp_probe(struct platform_device *pdev)
+ 	struct resource *res;
+ 	struct device *dev;
+ 	struct dptx *dptx;
++	u32 max_lanes;
+ 	int retval;
+ 
+ 	dev = &pdev->dev;
+@@ -1096,6 +1097,14 @@ static int mmi_dp_probe(struct platform_device *pdev)
+ 
+ 	dev_info(dev, "IRQ number %d.\n", dptx->irq);
+ 
++	retval = of_property_read_u32(dev->of_node, "xlnx,dp-lanes", &max_lanes);
++	if (retval < 0 || (max_lanes != 1 && max_lanes != 2 && max_lanes != 4)) {
++		max_lanes = 1;
++		dev_warn(dev, "no lanes/invalid lane count, defaulting to 1 lane\n");
++	}
++
++	dptx->max_lanes = max_lanes;
++
+ 	dptx->cr_fail = false;
+ 	dptx->mst = false; /* Should be disabled for HDCP. */
+ 	dptx->ssc_en = false;
+@@ -1109,7 +1118,6 @@ static int mmi_dp_probe(struct platform_device *pdev)
+ 	atomic_set(&dptx->c_connect, 0);
+ 
+ 	dptx->max_rate = DPTX_DEFAULT_LINK_RATE;
+-	dptx->max_lanes = DPTX_DEFAULT_LINK_LANES;
+ 
+ 	platform_set_drvdata(pdev, dptx);
+ 
+-- 
+2.43.0
+
