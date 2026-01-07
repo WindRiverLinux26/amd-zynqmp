@@ -562,6 +562,7 @@ CUSTOMER_RECIPES:xilinx += 'fsbl'
 CUSTOMER_RECIPES:xilinx += 'arm-trusted-firmware'
 CUSTOMER_RECIPES:xilinx += 'pmufw'
 CUSTOMER_RECIPES:xilinx += 'device-tree'
+CUSTOMER_RECIPES:xilinx += 'bitstream'
 CUSTOMER_RECIPES:xilinx-standalone += 'pmu-firmware'
 CUSTOMER_RECIPES:xilinx-standalone += 'fsbl-firmware'
 CUSTOMER_RECIPES:xilinx += 'u-boot-xlnx-uenv'
@@ -594,14 +595,20 @@ that describes a hardware platform. This file can be used to generate
 necessary hardware and software components that are then integrated
 into a Yocto-based Linux build through the SDT workflow.
 
-According to how the Programmable Logic (PL) portion of the XSA is
-structured and reconfigured, the XSA files can be divided into two
-types:
-	-Full Configuration
-	-Dynamic Function eXchange(DFX)
-Different XSA types will lead to different steps for the SDT workflow.
+According to how the Programmable Logic (PL) portion is handled, there
+are three types:
 
-The DFX XSA is NOT supported yet.
+	- Flat Design: The bitstream file is integrated into BOOT.BIN and
+				   the pl.dtsi is integrated into system.dtb, FPGA is
+				   programmed during boot and dtbo is automatically
+				   applied after Linux boots.
+	- Full Design: The bitstream file is NOT integrated into BOOT.BIN
+				   and the pl.dtsi is NOT integrated into system.dtb.
+				   Customers use the content of the section "7.3" and
+				   "7.4" to program the FPGA.
+	- Dynamic Function eXchange(DFX): DFX is NOT supported yet.
+
+Different XSA types will lead to different steps for the SDT workflow.
 
 7.2.1 gen-machineconf
 ---------------------
@@ -621,6 +628,8 @@ comprehensive system device tree.
 For a more detailed description of sdtgen, please see
 	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/3156475927/Overview+of+System+Device+Tree+Generator+SDTGen
 
+7.2.2.1 Parse xsa using sdtgen
+------------------------------
 The following commands should be executed at a "build-host" with Vivado installed:
 	(build-host)$ mkdir <my-project-dir>
 	(build-host)$ cat << _EOF >> sdt.tcl
@@ -632,6 +641,8 @@ sdtgen generate_sdt
 _EOF
 	(build-host)$ xsct sdt.tcl <path_to_xsa-file/project.xsa> <my-project-dir>
 
+7.2.2.2 WRLinux SDT preparation
+-------------------------------
 Make sure that the folder <my-project-dir> is placed where WRLinux can access it
 and start SDT workflow by executing the following commands:
 
@@ -648,6 +659,7 @@ CUSTOMER_RECIPES:xilinx += 'fsbl'
 CUSTOMER_RECIPES:xilinx += 'arm-trusted-firmware'
 CUSTOMER_RECIPES:xilinx += 'pmufw'
 CUSTOMER_RECIPES:xilinx += 'device-tree'
+CUSTOMER_RECIPES:xilinx += 'bitstream'
 CUSTOMER_RECIPES:xilinx-standalone += 'pmu-firmware'
 CUSTOMER_RECIPES:xilinx-standalone += 'fsbl-firmware'
 CUSTOMER_RECIPES:xilinx += 'u-boot-xlnx-uenv'
@@ -664,8 +676,15 @@ BB_NO_NETWORK = '0'
 _EOF
 	(build-host)$ export PATH=$PATH:<PROJECT_DIR>/layers/meta-xilinx/gen-machine-conf/
 
-For Full Configuration
+7.2.2.3 Choose design
+---------------------
+a. For Flat Design:
+	(build-host)$ gen-machineconf parse-sdt --hw-description <path_to_dir/my-project-dir> -c conf/ --machine-name <your_workflow_machine_name> --add-config CONFIG_SUBSYSTEM_MACHINE_NAME=\"zynqmp-zcu102-rev1.1\"
+b. For Full Design:
 	(build-host)$ gen-machineconf parse-sdt --hw-description <path_to_dir/my-project-dir> -c conf/ --machine-name <your_workflow_machine_name> --add-config CONFIG_SUBSYSTEM_MACHINE_NAME=\"zynqmp-zcu102-rev1.1\" -g full
+
+7.2.2.4 Build image
+-------------------
 	(build-host)$ cat << _EOF >> conf/local.conf
 WORKFLOW_MACHINE_NAME = "<your_workflow_machine_name>"
 _EOF
