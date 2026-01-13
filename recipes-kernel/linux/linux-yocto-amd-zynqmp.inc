@@ -40,7 +40,6 @@ file://0022-clk-xilinx-Optimize-divisor-search-in-clk_wzrd_get_d.patch \
 file://0023-arm64-zynqmp-Add-DP-support-for-kr260-revA-board.patch \
 file://0024-arm64-zynqmp-Add-missing-ethernet-alias-for-kr260-re.patch \
 file://0025-arm64-zynqmp-Describe-ethernet-controllers-via-alias.patch \
-file://0026-mmc-sdhci-of-arasan-Increase-CD-stable-timeout-to-2-.patch \
 file://0027-net-xilinx-axienet-Fix-missing-error-code-assignment.patch \
 file://0028-net-xilinx-axienet-Simplify-gt_mode-property-check.patch \
 file://0029-remoteproc-xlnx-Add-shutdown-callback.patch \
