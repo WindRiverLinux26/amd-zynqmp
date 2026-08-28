@@ -12,4 +12,4 @@ SRCREV_meta:amd-zynqmp ?= "${AUTOREV}"
 
 KERNEL_DTC_FLAGS:append:amd-zynqmp = " -@"
 
-LINUX_VERSION:amd-zynqmp ?= "6.12.x"
+LINUX_VERSION:amd-zynqmp ?= "6.18.x"
